@@ -417,7 +417,7 @@ runs:
         cd "$GITHUB_WORKSPACE/${CONFIG}/kernel_platform/common"
         echo "Enabling Baseband Guard (LSM)..."
         curl -LSs https://raw.githubusercontent.com/vc-teahouse/Baseband-guard/main/setup.sh | bash
-        sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/bpf/bpf,baseband_guard/ } }' ./security/Kconfig
+        sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/lockdown/lockdown,baseband_guard/ } }' common/security/Kconfig
 
     - name: Convert HMBIRD_OGKI to HMBIRD_GKI (6.6 only)
       shell: bash
