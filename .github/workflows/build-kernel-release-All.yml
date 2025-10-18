@@ -1,0 +1,273 @@
+name: Build ALL OnePlus Kernels
+
+permissions:
+  contents: write
+  actions: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      make_release:
+        description: 'Create a release after all builds?'
+        required: true
+        type: boolean
+        default: false
+      ksun_branch:
+        description: 'KernelSU Next Branch or commit hash (blank for stable tag)'
+        required: true
+        type: string
+        default: next
+      optimize_level:
+        description: 'Compiler optimization level'
+        required: true
+        type: choice
+        options: [O2, O3]
+        default: O2
+      KSU_META:
+        description: 'SukiSU Ultra branch/custom version identifier (e.g., susfs-main/⚡Ultra⚡/)'
+        required: false
+        type: string
+        default: 'susfs-main/⚡Ultra⚡/'
+      HOOK:
+        description: 'SukiSU hook type'
+        required: false
+        type: choice
+        options: [kprobe, manual, tracepoint]
+        default: manual
+      LSM:
+        description: 'Enable kernel-level Baseband Guard (LSM)?'
+        required: true
+        type: boolean
+        default: false
+      susfs_mapping_json:
+        description: 'JSON map for SusFS branch per combo. Keys: android12-5.10, android13-5.10, android13-5.15, android14-5.15, android14-6.1, android15-6.6'
+        required: false
+        type: string
+        default: '{"android12-5.10":"","android13-5.10":"","android13-5.15":"","android14-5.15":"","android14-6.1":"","android15-6.6":""}'
+
+jobs:
+  build:
+    name: build (${{ matrix.config }}, ${{ inputs.ksun_branch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - oneplus_nord_ce4_lite_5g_v
+          - oneplus_nord_ce4_v
+          - oneplus_nord_4_v
+          - oneplus_ace_3v_v
+          - oneplus_10_pro_v
+          - oneplus_10t_v
+          - oneplus_11r_v
+          - oneplus_ace2_v
+          - oneplus_11_v
+          - oneplus_12r_v
+          - oneplus_ace2_pro_v
+          - oneplus_open_v
+          - oneplus12_v
+          - oneplus_ace3_pro_v
+          - oneplus_ace5
+          - oneplus_pad_pro_v
+          - oneplus_pad2_v
+          - oneplus_nord_5
+          - oneplus_ace5_pro
+          - oneplus_13_CN
+          - oneplus_13_global
+          - oneplus_13t
+          - oneplus_13s
+          - oneplus_pad_2_pro
+          - oneplus_pad_3
+          # Add oneplus_13r here if you want it included:
+          # - oneplus_13r
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Resolve selection to parameters (from JSON map)
+        id: select
+        shell: bash
+        run: |
+          set -euo pipefail
+          sel="${{ matrix.config }}"
+          MAP=".github/device_map.json"
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update -y && sudo apt-get install -y jq
+          fi
+          if [[ ! -f "$MAP" ]]; then
+            echo "ERROR: $MAP not found in repository." >&2
+            exit 1
+          fi
+          if ! jq -e --arg k "$sel" 'has($k)' "$MAP" >/dev/null; then
+            echo "ERROR: Unknown config '$sel'. Add it to $MAP." >&2
+            echo "Available keys:" >&2
+            jq -r 'keys[]' "$MAP" >&2
+            exit 1
+          fi
+          model=$(jq -r --arg k "$sel" '.[$k].model' "$MAP")
+          soc=$(jq -r --arg k "$sel" '.[$k].soc' "$MAP")
+          branch=$(jq -r --arg k "$sel" '.[$k].branch' "$MAP")
+          manifest=$(jq -r --arg k "$sel" '.[$k].manifest' "$MAP")
+          android_version=$(jq -r --arg k "$sel" '.[$k].android_version' "$MAP")
+          kernel_version=$(jq -r --arg k "$sel" '.[$k].kernel_version' "$MAP")
+          for v in model soc branch manifest android_version kernel_version; do
+            val="${!v}"
+            if [[ -z "$val" || "$val" == "null" ]]; then
+              echo "ERROR: Missing field '$v' for config '$sel' in $MAP" >&2
+              exit 1
+            fi
+          done
+          echo "model=$model"                     >> "$GITHUB_ENV"
+          echo "soc=$soc"                         >> "$GITHUB_ENV"
+          echo "branch=$branch"                   >> "$GITHUB_ENV"
+          echo "manifest=$manifest"               >> "$GITHUB_ENV"
+          echo "android_version=$android_version" >> "$GITHUB_ENV"
+          echo "kernel_version=$kernel_version"   >> "$GITHUB_ENV"
+          FILE_CONF="${manifest%.xml}"
+          FILE_BASE=$(echo "$FILE_CONF" | sed -E 's/_([a-zA-Z0-9])/\U\1/g; s/^oneplus/OnePlus/; s/^realme/Realme/; s/^oppo/Oppo/')
+          echo "FILE_CONF=$FILE_CONF"             >> "$GITHUB_ENV"
+          echo "FILE_BASE=$FILE_BASE"             >> "$GITHUB_ENV"
+
+      - name: Resolve SUSFS branch from mapping
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="${{ env.android_version }}-${{ env.kernel_version }}"
+          json='${{ inputs.susfs_mapping_json }}'
+          if ! echo "$json" | jq -e . >/dev/null 2>&1; then
+            json='{"android12-5.10":"","android13-5.10":"","android13-5.15":"","android14-5.15":"","android14-6.1":"","android15-6.6":""}'
+          fi
+          val=$(echo "$json" | jq -r --arg k "$key" '.[$k] // ""')
+          if [[ -n "$val" && "$val" != "null" ]]; then
+            echo "susfs_branch=$val" >> "$GITHUB_ENV"
+          else
+            echo "susfs_branch=gki-${key}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build Kernel
+        id: build_kernel
+        uses: ./.github/actions/build
+        env:
+          SUSFS_JSON: ${{ inputs.susfs_mapping_json }}
+        with:
+          model: ${{ env.model }}
+          soc: ${{ env.soc }}
+          branch: ${{ env.branch }}
+          manifest: ${{ env.manifest }}
+          android_version: ${{ env.android_version }}
+          kernel_version: ${{ env.kernel_version }}
+          susfs_branch: ${{ env.susfs_branch }}
+          ksun_branch: ${{ inputs.ksun_branch }}
+          optimize_level: ${{ inputs.optimize_level }}
+          KSU_META: ${{ inputs.KSU_META }}
+          HOOK: ${{ inputs.HOOK }}
+          LSM: ${{ inputs.LSM }}
+
+  trigger-release:
+    needs: [build]
+    runs-on: ubuntu-latest
+    if: ${{ inputs.make_release }}
+    env:
+      REPO_OWNER: ${{ github.repository_owner }}
+      REPO_NAME: ${{ github.event.repository.name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_NAME: 'OnePlus Kernels With SukiSU (All)'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate and Create New Tag
+        run: |
+          set -euo pipefail
+          git fetch --tags --quiet
+          BASE_TAG="v1.5.12"
+          LATEST_TAG=$(git tag --list "${BASE_TAG}-r*" | sort -V | tail -n1 || true)
+          if [ -z "$LATEST_TAG" ]; then
+            NEW_TAG="${BASE_TAG}-r0"
+          else
+            n=$(echo "$LATEST_TAG" | awk -F'-r' '{print $2}')
+            [ -z "$n" ] && n=0
+            n=$((n + 1))
+            NEW_TAG="${BASE_TAG}-r${n}"
+          fi
+          echo "NEW_TAG=${NEW_TAG}" >> "$GITHUB_ENV"
+          git tag "$NEW_TAG"
+          git push origin "$NEW_TAG"
+          echo "Created tag: $NEW_TAG"
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./downloaded-artifacts
+
+      - name: Generate Device List and Final Release Notes
+        id: generate-notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "=== Start building the release notes ==="
+          cat << 'EOF' > release_notes.md
+          This release contains SukiSU
+
+          ### Built Devices
+
+          | Model | Kernel Version | SukiSU Version | SUSFS Version | Warnings |
+          |-------|----------------|----------------|---------------|----------|
+          EOF
+
+          if [ -d "./downloaded-artifacts" ]; then
+            for dir in ./downloaded-artifacts/kernel-*; do
+              if [ -d "$dir" ]; then
+                model=$(basename "$dir" | sed 's/^kernel-//')
+                txt_file="$dir/$model.txt"
+                metadata_file="$dir/$model.metadata.json"
+                version="Unknown"
+                ksu_version="Unknown"
+                susfs_version="Unknown"
+                warnings="Unknown"
+                if [ -f "$txt_file" ]; then
+                  version=$(cat "$txt_file" 2>/dev/null || echo "Unknown")
+                fi
+                if [ -f "$metadata_file" ]; then
+                  ksu_version=$(jq -r '.ksu_version // "Unknown"' "$metadata_file")
+                  susfs_version=$(jq -r '.susfs_version // "Unknown"' "$metadata_file")
+                  warnings=$(jq -r '.warnings // "Unknown"' "$metadata_file")
+                fi
+                printf "| %-12s | %-14s | %-14s | %-13s | %-8s |\n" \
+                  "$model" "$version" "$ksu_version" "$susfs_version" "$warnings" >> release_notes.md
+              fi
+            done
+          fi
+
+          echo "--- Final Release Notes ---"
+          cat release_notes.md
+
+      - name: Create GitHub Release
+        run: |
+          set -euo pipefail
+          gh release create "${{ env.NEW_TAG }}" \
+            --repo "${{ env.REPO_OWNER }}/${{ env.REPO_NAME }}" \
+            --title "${{ env.RELEASE_NAME }}" \
+            --notes-file release_notes.md \
+            --prerelease
+
+      - name: Upload Release Assets Dynamically
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          upload_count=0
+          for file in ./downloaded-artifacts/*/*.zip; do
+            if [ -f "$file" ]; then
+              echo "Uploading $file..."
+              gh release upload "${{ env.NEW_TAG }}" "$file" --clobber || \
+                echo "WARNING: Failed to upload $file"
+              ((upload_count++))
+            fi
+          done
+          echo "Uploaded $upload_count assets"
+          shopt -u nullglob
