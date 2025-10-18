@@ -185,7 +185,7 @@ runs:
         echo "Initializing kernel repo..."
         if [[ "${{ inputs.manifest }}" == https://* ]]; then
           mkdir -p .repo/manifests
-          curl -Ls "${{ inputs.manifest }}" -o .repo/manifests/temp_manifest.xml
+          curl -Ls "${${ inputs.manifest }}" -o .repo/manifests/temp_manifest.xml
           "$REPO" init -u https://github.com/OnePlusOSS/kernel_manifest.git \
             -b oneplus/${{ inputs.soc }} -m temp_manifest.xml \
             --repo-rev=v2.16 --depth=1 --no-clone-bundle --no-tags
@@ -236,16 +236,26 @@ runs:
         echo "TKERNEL_VERSION=$FULL" >> "$GITHUB_ENV"
         echo "Full kernel version: $FULL"
 
-    - name: Derive Android/Kernel Branch
+    - name: Derive Android/Kernel Branch (from tree)
       shell: bash
       run: |
         set -euo pipefail
         KP="$GITHUB_WORKSPACE/${CONFIG}/kernel_platform/common"
-        BRANCH="$( (grep -m1 '^[[:space:]]*BRANCH=' "$KP/build.config.common" || grep -m1 '^[[:space:]]*BRANCH=' "$KP/build.config.constants" || true) | awk -F= '{print $2}' | tr -d '[:space:]')"
-        if [ -n "$BRANCH" ]; then
-          echo "Detected BRANCH=$BRANCH; keeping input values KANDROID_VERSION=${{ inputs.android_version }}; KERNEL_VERSION=${{ inputs.kernel_version }}"
+        BRANCH=""
+        if [ -f "$KP/build.config.common" ]; then
+          BRANCH="$(grep -m1 '^[[:space:]]*BRANCH=' "$KP/build.config.common" | awk -F= '{print $2}' | tr -d '[:space:]' || true)"
+        fi
+        if [ -z "$BRANCH" ] && [ -f "$KP/build.config.constants" ]; then
+          BRANCH="$(grep -m1 '^[[:space:]]*BRANCH=' "$KP/build.config.constants" | awk -F= '{print $2}' | tr -d '[:space:]' || true)"
+        fi
+        if [ -n "$BRANCH" ] && [[ "$BRANCH" == *-* ]]; then
+          A="${BRANCH%-*}"
+          K="${BRANCH#*-}"
+          echo "Detected BRANCH=$BRANCH => ANDROID=$A KERNEL=$K"
+          echo "KANDROID_VERSION=$A" >> "$GITHUB_ENV"
+          echo "KERNEL_VERSION=$K" >> "$GITHUB_ENV"
         else
-          echo "No BRANCH found in build.config files; using input values KANDROID_VERSION=${{ inputs.android_version }}; KERNEL_VERSION=${{ inputs.kernel_version }}"
+          echo "WARNING: Could not derive BRANCH from kernel tree; keeping provided KANDROID_VERSION=${{ inputs.android_version }} KERNEL_VERSION=${{ inputs.kernel_version }}"
         fi
 
     - name: Resolve SUSFS Branch
@@ -359,7 +369,6 @@ runs:
           SHORT_HASH=${MANUAL_HASH:0:8}
         fi
 
-        # Obtain KSU API version from META branch Makefile (for tagging), fallback to minimum
         KSU_API_VERSION=$(curl -fsSL "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/${META_BRANCH}/kernel/Makefile" | \
           grep -m1 "KSU_VERSION_API :=" | awk -F'= ' '{print $2}' | tr -d '[:space:]' || true)
         if [[ -z "$KSU_API_VERSION" || "$(printf '%s\n' "$KSU_API_VERSION" "3.1.7" | sort -V | head -n1)" != "3.1.7" ]]; then
@@ -379,16 +388,15 @@ runs:
           VERSION_FULL="v$KSU_API_VERSION-$CUSTOM_TAG@${KSU_SETUP_BRANCH}[$USE_HASH]"
         fi
 
-        # Stamp KernelSU/kernel/Makefile
         sed -i '/define get_ksu_version_full/,/endef/d' kernel/Makefile || true
         sed -i '/KSU_VERSION_API :=/d' kernel/Makefile || true
         sed -i '/KSU_VERSION_FULL :=/d' kernel/Makefile || true
         VERSION_DEFINITIONS=$(cat <<EOF
-        define get_ksu_version_full
-        $VERSION_FULL
-        endef
-        KSU_VERSION_API := $KSU_API_VERSION
-        KSU_VERSION_FULL := $VERSION_FULL
+          define get_ksu_version_full
+          $VERSION_FULL
+          endef
+          KSU_VERSION_API := $KSU_API_VERSION
+          KSU_VERSION_FULL := $VERSION_FULL
         EOF
         )
         awk -v def="$VERSION_DEFINITIONS" '
@@ -397,7 +405,6 @@ runs:
           END {if (!inserted) print def}
         ' kernel/Makefile > kernel/Makefile.tmp && mv kernel/Makefile.tmp kernel/Makefile
 
-        # Derive a build number-like version
         KSU_VERSION=$(expr $(git rev-list --count "${KSU_SETUP_BRANCH}" 2>/dev/null || echo 13000) + 10700)
         echo "KSUVER=$KSU_VERSION" >> "$GITHUB_ENV"
         echo "::group::Final Makefile version info and partial debug results preview"
@@ -421,7 +428,7 @@ runs:
         GKI_V="${KANDROID_VERSION}-${KERNEL_VERSION}"
         SUBLEVEL=$(grep '^SUBLEVEL *=' Makefile | head -n1 | cut -d= -f2 | tr -d ' ')
         if [ "$GKI_V" == "android13-5.15" ] && [ "$SUBLEVEL" -lt 123 ]; then
-          echo "Fixing some bugs caused by kernel version 5.15.0 to 5.15.123 only supporting old C libraries"
+          echo "Applying fix_5.15.legacy for 5.15 sublevel < 123"
           curl -Lo fix_5.15.legacy.patch --retry 5 --retry-delay 2 --retry-connrefused https://raw.githubusercontent.com/Numbersf/Action-Build/SukiSU-Ultra/patches/fix_5.15.legacy
           patch -p1 < fix_5.15.legacy.patch
           echo "fix_5.15_patch completed"
@@ -436,13 +443,17 @@ runs:
           fi
           echo "trusty_exists=$TRUSTY_EXISTS" >> "$GITHUB_OUTPUT"
           if [[ "$TRUSTY_EXISTS" == "false" && "$(printf '%s\n' "$TKERNEL_VERSION" "6.6.30" | sort -V | head -n1)" = "$TKERNEL_VERSION" ]]; then
-            echo "Fixing susfs errors caused by missing Trusty OS on some kernel 6.6 models"
+            echo "Adjusting susfs patch for missing Trusty (6.6)"
             sed -i 's/-32,12 +32,38/-32,11 +32,37/g' 50_add_susfs_in_gki-${KANDROID_VERSION}-${KERNEL_VERSION}.patch
             sed -i '/#include <trace\/hooks\/fs.h>/d' 50_add_susfs_in_gki-${KANDROID_VERSION}-${KERNEL_VERSION}.patch
           fi
         fi
-        echo "Applying susfs patch"
-        patch -p1 < 50_add_susfs_in_gki-${KANDROID_VERSION}-${KERNEL_VERSION}.patch || true
+        echo "Applying susfs patch (fail-fast)"
+        if ! patch -p1 --forward --reject-file=- < 50_add_susfs_in_gki-${KANDROID_VERSION}-${KERNEL_VERSION}.patch; then
+          echo "ERROR: SUSFS patch failed to apply for ${KANDROID_VERSION}-${KERNEL_VERSION}"
+          echo "Hint: ensure susfs branch '${SUSFS_KERNEL_BRANCH}' exists and matches your kernel tree."
+          exit 1
+        fi
         echo "susfs_patch completed"
 
     - name: Record SUSFS Version
@@ -657,6 +668,12 @@ runs:
         KCFLAGS="-Wno-error -pipe -fno-stack-protector ${KCFLAGS_EXTRA}"
         KCPPFLAGS="-DCONFIG_OPTIMIZE_INLINING"
         make O="$OUT" olddefconfig
+        # Verify SUSFS presence in final config
+        if ! grep -q '^CONFIG_KSU_SUSFS=y' "$OUT/.config"; then
+          echo "ERROR: CONFIG_KSU_SUSFS=y not present in final .config"
+          echo "This usually means the SUSFS patch did not integrate or Kconfig entries are missing."
+          exit 1
+        fi
         echo "Starting build with $(nproc --all) threads..."
         set -o pipefail
         make -j"$(nproc --all)" O="$OUT" KCFLAGS="$KCFLAGS" KCPPFLAGS="$KCPPFLAGS" 2>&1 | tee build.log
