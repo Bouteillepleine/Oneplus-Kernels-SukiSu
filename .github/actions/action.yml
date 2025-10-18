@@ -356,12 +356,12 @@ runs:
         sed -i '/KSU_VERSION_API :=/d' kernel/Makefile
         sed -i '/KSU_VERSION_FULL :=/d' kernel/Makefile
         VERSION_DEFINITIONS=$(cat <<EOF
-define get_ksu_version_full
-$VERSION_FULL
-endef
-KSU_VERSION_API := $KSU_API_VERSION
-KSU_VERSION_FULL := $VERSION_FULL
-EOF
+          define get_ksu_version_full
+          $VERSION_FULL
+          endef
+          KSU_VERSION_API := $KSU_API_VERSION
+          KSU_VERSION_FULL := $VERSION_FULL
+        EOF
         )
         awk -v def="$VERSION_DEFINITIONS" '
           /REPO_OWNER :=/ {print; print def; inserted=1; next}
