@@ -118,13 +118,11 @@ runs:
         esac
         echo "Input validation OK."
         echo "::endgroup::"
-
     - name: Init Derived Env
       shell: bash
       run: |
         echo "KANDROID_VERSION=${{ inputs.android_version }}" >> "$GITHUB_ENV"
         echo "KERNEL_VERSION=${{ inputs.kernel_version }}" >> "$GITHUB_ENV"
-
     - name: Install Minimal Dependencies
       shell: bash
       run: |
@@ -137,13 +135,11 @@ runs:
           libxml2-utils rsync unzip dwarves file python3 jq
         sudo apt-get clean
         echo "::endgroup::"
-
     - name: Configure Git
       shell: bash
       run: |
         git config --global user.name "Bouteille"
         git config --global user.email "Bouteille@qq.com"
-
     - name: Setup Base Environment
       shell: bash
       run: |
@@ -156,14 +152,12 @@ runs:
           chmod +x "$REPO"
         fi
         echo "REPO=$REPO" >> "$GITHUB_ENV"
-
     - name: Clone AnyKernel3
       shell: bash
       run: |
         set -euo pipefail
         echo "Cloning AnyKernel3..."
         git clone https://github.com/Bouteillepleine/AnyKernel3.git -b gki-2.0
-
     - name: Prepare Manifest Fallback (compat)
       shell: bash
       run: |
@@ -181,7 +175,6 @@ runs:
             echo "FILE=${FILE_BASENAME}" >> "$GITHUB_ENV"
           fi
         fi
-
     - name: Initialize and Sync Kernel Source
       shell: bash
       run: |
@@ -202,7 +195,6 @@ runs:
         fi
         "$REPO" --version
         "$REPO" --trace sync -c --no-clone-bundle --no-tags --optimized-fetch -j"$(nproc --all)" --fail-fast
-
     - name: Mirror manifest into fallback (post-sync)
       if: ${{ inputs.manifest != '' && !startsWith(inputs.manifest, 'https://') }}
       shell: bash
@@ -213,7 +205,6 @@ runs:
         if [ -f "$SRC" ]; then
           cp -f "$SRC" "$GITHUB_WORKSPACE/.repo/manifests_fallback/${{ inputs.manifest }}"
         fi
-
     - name: Clean Up ABI Protected Exports
       shell: bash
       run: |
@@ -222,7 +213,6 @@ runs:
         rm -f common/android/abi_gki_protected_exports_* || echo "No protected exports in common!"
         rm -f msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports in msm-kernel!"
         df -h
-
     - name: Derive Kernel / Manifest Metadata
       shell: bash
       run: |
@@ -241,7 +231,6 @@ runs:
         FULL="$V.$P.$S"
         echo "TKERNEL_VERSION=$FULL" >> "$GITHUB_ENV"
         echo "Full kernel version: $FULL"
-
     - name: Derive Android/Kernel Branch
       shell: bash
       run: |
@@ -253,7 +242,6 @@ runs:
         else
           echo "No BRANCH found in build.config files; using input values KANDROID_VERSION=${{ inputs.android_version }}; KERNEL_VERSION=${{ inputs.kernel_version }}"
         fi
-
     - name: Resolve SUSFS Branch
       shell: bash
       run: |
@@ -302,7 +290,6 @@ runs:
           echo "SUSFS_KERNEL_BRANCH=$susfs_branch" >> "$GITHUB_ENV"
           echo "Resolved SUSFS branch: $susfs_branch"
         fi
-
     - name: Derive Build Metadata (env)
       shell: bash
       run: |
@@ -315,14 +302,12 @@ runs:
         echo "KERNEL_FULL_VER=$FULL" >> "$GITHUB_ENV"
         echo "ANDROID_VER=${KANDROID_VERSION}" >> "$GITHUB_ENV"
         echo "KERNEL_VER=${KERNEL_VERSION}" >> "$GITHUB_ENV"
-
     - name: Branding
       shell: bash
       run: |
         set -euo pipefail
         CUSTOM_LOCALVERSION="-${KANDROID_VERSION}-OnePlus-UltraBolt"
         echo "CUSTOM_LOCALVERSION=$CUSTOM_LOCALVERSION" >> "$GITHUB_ENV"
-
     - name: Add SukiSU Ultra
       shell: bash
       run: |
@@ -366,12 +351,12 @@ runs:
         sed -i '/KSU_VERSION_API :=/d' kernel/Makefile
         sed -i '/KSU_VERSION_FULL :=/d' kernel/Makefile
         VERSION_DEFINITIONS=$(cat <<EOF
-define get_ksu_version_full
-$VERSION_FULL
-endef
-KSU_VERSION_API := $KSU_API_VERSION
-KSU_VERSION_FULL := $VERSION_FULL
-EOF
+        define get_ksu_version_full
+        $VERSION_FULL
+        endef
+          KSU_VERSION_API := $KSU_API_VERSION
+          KSU_VERSION_FULL := $VERSION_FULL
+        EOF
         )
         awk -v def="$VERSION_DEFINITIONS" '
           /REPO_OWNER :=/ {print; print def; inserted=1; next}
@@ -384,7 +369,6 @@ EOF
         grep -A10 "REPO_OWNER" kernel/Makefile || true
         grep "KSU_VERSION_FULL" kernel/Makefile || true
         echo "::endgroup::"
-
     - name: Apply Patches SukiSU Ultra
       shell: bash
       run: |
@@ -424,7 +408,6 @@ EOF
         echo "Applying susfs patch"
         patch -p1 < 50_add_susfs_in_gki-${KANDROID_VERSION}-${KERNEL_VERSION}.patch || true
         echo "susfs_patch completed"
-
     - name: Record SUSFS Version
       shell: bash
       run: |
@@ -432,7 +415,6 @@ EOF
         cd "${CONFIG}/susfs4ksu"
         SUSVER=$(git rev-parse --short HEAD || echo unknown)
         echo "SUSVER=$SUSVER" >> "$GITHUB_ENV"
-
     - name: Apply Hide Stuff Patches
       shell: bash
       run: |
@@ -443,7 +425,6 @@ EOF
         echo "Applying hide app patch"
         patch -p1 -F 3 < 69_hide_stuff.patch
         echo "hide app_patch completed"
-
     - name: Apply HOOK
       shell: bash
       run: |
@@ -461,17 +442,21 @@ EOF
           echo "Invoking tracepoint hook"
           patch -p1 -F 3 < sukisu_tracepoint_hooks_v1.1.patch
         fi
-
     - name: Apply LSM Baseband Guard
       if: ${{ inputs.LSM == 'true' }}
-      shell hoo: bash
+      shell: bash
       run: |
         set -euo pipefail
         cd "$GITHUB_WORKSPACE/${CONFIG}/kernel_platform/common"
         echo "Enabling Baseband Guard (LSM)..."
         curl -LSs https://raw.githubusercontent.com/vc-teahouse/Baseband-guard/main/setup.sh | bash
-        sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/lockdown/lockdown,baseband_guard/ } }' ./security/Kconfig
-
+        if grep -q '^config LSM' security/Kconfig; then
+          if awk '/^config LSM$/{f=1} f && /default/{print; exit}' security/Kconfig | grep -q 'lockdown'; then
+            sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/lockdown/lockdown,baseband_guard/ } }' security/Kconfig
+          else
+            sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/bpf/bpf,baseband_guard/ } }' security/Kconfig
+          fi
+        fi
     - name: Convert HMBIRD_OGKI to HMBIRD_GKI (6.6 only)
       shell: bash
       run: |
@@ -484,7 +469,6 @@ EOF
         curl -fL -o hmbird_patch.patch https://raw.githubusercontent.com/Numbersf/Action-Build/SukiSU-Ultra/patches/hmbird_patch.patch
         grep -q 'hmbird_patch.o' drivers/Makefile || echo 'obj-y += hmbird_patch.o' >> drivers/Makefile
         patch -p1 -F 3 < hmbird_patch.patch || echo "hmbird patch failed (non-fatal)"
-
     - name: Add KernelSU / SUSFS Config
       shell: bash
       run: |
@@ -520,8 +504,10 @@ EOF
         echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$CONFIG_FILE"
         echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$CONFIG_FILE"
         echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$CONFIG_FILE"
+        
         echo "CONFIG_TMPFS_XATTR=y" >> "$CONFIG_FILE"
         echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$CONFIG_FILE"
+        
         echo "CONFIG_TCP_CONG_ADVANCED=y" >> "$CONFIG_FILE"
         echo "CONFIG_TCP_CONG_BBR=y" >> "$CONFIG_FILE"
         echo "CONFIG_NET_SCH_FQ=y" >> "$CONFIG_FILE"
@@ -533,14 +519,16 @@ EOF
         echo "CONFIG_IP_NF_TARGET_TTL=y" >> "$CONFIG_FILE"
         echo "CONFIG_IP6_NF_TARGET_HL=y" >> "$CONFIG_FILE"
         echo "CONFIG_IP6_NF_MATCH_HL=y" >> "$CONFIG_FILE"
+        
         echo "CONFIG_LTO_CLANG_THIN=y" >> "$CONFIG_FILE"
         echo "CONFIG_LTO_CLANG=y" >> "$CONFIG_FILE"
+        
         echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> "$CONFIG_FILE"
         echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=n" >> "$CONFIG_FILE"
+        
         if [ "${{ inputs.LSM }}" = "true" ]; then
           echo "CONFIG_BBG=y" >> "$CONFIG_FILE"
         fi
-
     - name: Add sched_ext (6.6 only)
       shell: bash
       run: |
@@ -553,7 +541,6 @@ EOF
         git clone https://github.com/HanKuCha/sched_ext.git
         cp -r sched_ext/* ./common/kernel/sched/
         rm -rf sched_ext/.git
-
     - name: Save Build Metadata
       id: save_metadata
       shell: bash
@@ -571,7 +558,6 @@ EOF
         echo "kernel_version=$FULL" >> "$GITHUB_OUTPUT"
         echo "ksu_version=${KSUVER:-unknown}" >> "$GITHUB_OUTPUT"
         echo "susfs_version=${SUSVER:-unknown}" >> "$GITHUB_OUTPUT"
-
     - name: Detect Clang (toolchain for build)
       shell: bash
       run: |
@@ -596,7 +582,6 @@ EOF
         CLANG_VERSION="$("$CLANG_BIN/clang" --version | head -n1)"
         echo "CLANG_VERSION=$CLANG_VERSION" >> "$GITHUB_ENV"
         echo "Detected Clang: $CLANG_VERSION"
-
     - name: Build Kernel
       shell: bash
       env:
@@ -648,7 +633,6 @@ EOF
         fi
         sha256sum "$IMG" | tee "$OUT/Image.sha256"
         echo "::endgroup::"
-
     - name: Collect Build Stats / Validate Image
       id: collect_stats
       shell: bash
@@ -678,7 +662,6 @@ EOF
         echo "Image sha256: $IMAGE_SHA256"
         echo "warnings=$WARNINGS" >> "$GITHUB_OUTPUT"
         echo "image_sha256=$IMAGE_SHA256" >> "$GITHUB_OUTPUT"
-
     - name: Prepare Image for AnyKernel3
       shell: bash
       run: |
@@ -689,7 +672,6 @@ EOF
         else
           echo "Warning: Image not found for packaging at $IMG"
         fi
-
     - name: Download Latest SUSFS Module from CI
       shell: bash
       continue-on-error: true
@@ -720,7 +702,6 @@ EOF
         else
           echo "Downloaded artifact is empty; skipping include"
         fi
-
     - name: Create Flashable ZIP
       id: create_zip
       shell: bash
@@ -735,7 +716,6 @@ EOF
         zip -r9 "$ZIP" ./*
         mv "$ZIP" "$ART/"
         echo "ZIP created at $ART/$ZIP"
-
     - name: Final Build Summary
       shell: bash
       run: |
@@ -768,7 +748,6 @@ EOF
           echo "- Image SHA256: ${{ steps.collect_stats.outputs.image_sha256 }}"
           echo "- Warnings: ${{ steps.collect_stats.outputs.warnings }}"
         } >> "$GITHUB_STEP_SUMMARY"
-
     - name: Upload Artifacts
       if: success() && steps.create_zip.conclusion == 'success'
       uses: actions/upload-artifact@v4
