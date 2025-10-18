@@ -263,7 +263,6 @@ cd Oneplus-Kernels-SukiSu
 
 <div align="center">
 
-**Made with ❤️ for the OnePlus community**  
 **为 OnePlus 社区用心制作 ❤️**
 
 </div>
