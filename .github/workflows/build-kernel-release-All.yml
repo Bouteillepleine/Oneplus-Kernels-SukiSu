@@ -78,7 +78,7 @@ jobs:
           - oneplus_13t
           - oneplus_13s
           - oneplus_pad_2_pro
-          - oneplus_pad_3          
+          - oneplus_pad_3
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -180,6 +180,7 @@ jobs:
           fetch-depth: 0
 
       - name: Generate and Create New Tag
+        shell: bash
         run: |
           set -euo pipefail
           git fetch --tags --quiet
@@ -246,27 +247,43 @@ jobs:
           cat release_notes.md
 
       - name: Create GitHub Release
+        shell: bash
         run: |
           set -euo pipefail
-          gh release create "${{ env.NEW_TAG }}" \
-            --repo "${{ env.REPO_OWNER }}/${{ env.REPO_NAME }}" \
-            --title "${{ env.RELEASE_NAME }}" \
+          echo "Auth status:"
+          gh auth status || true
+          echo "Creating release for tag: ${NEW_TAG}"
+          gh release create "${NEW_TAG}" \
+            --repo "${REPO_OWNER}/${REPO_NAME}" \
+            --title "${RELEASE_NAME}" \
             --notes-file release_notes.md \
             --prerelease
 
       - name: Upload Release Assets Dynamically
         shell: bash
+        env:
+          TAG_TO_UPLOAD: ${{ env.NEW_TAG }}
         run: |
           set -euo pipefail
+          echo "Verifying release exists: ${TAG_TO_UPLOAD}"
+          if ! gh release view "${TAG_TO_UPLOAD}" --repo "${REPO_OWNER}/${REPO_NAME}" >/dev/null 2>&1; then
+            echo "ERROR: Release ${TAG_TO_UPLOAD} not found. Aborting upload." >&2
+            exit 1
+          fi
+
           shopt -s nullglob
           upload_count=0
+          failed=0
           for file in ./downloaded-artifacts/*/*.zip; do
             if [ -f "$file" ]; then
               echo "Uploading $file..."
-              gh release upload "${{ env.NEW_TAG }}" "$file" --clobber || \
+              if gh release upload "${TAG_TO_UPLOAD}" "$file" --clobber --repo "${REPO_OWNER}/${REPO_NAME}"; then
+                ((upload_count++))
+              else
                 echo "WARNING: Failed to upload $file"
-              ((upload_count++))
+                ((failed++))
+              fi
             fi
           done
-          echo "Uploaded $upload_count assets"
           shopt -u nullglob
+          echo "Uploaded $upload_count assets; failed: $failed"
