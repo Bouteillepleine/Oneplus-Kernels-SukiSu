@@ -321,30 +321,52 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
+        export LC_ALL=C.UTF-8
+        export LANG=C.UTF-8
         cd "${CONFIG}/kernel_platform"
         META="${{ inputs.KSU_META }}"
         if [[ "$(grep -o '/' <<< "$META" | wc -l)" -lt 2 ]]; then
-          echo "Error: KSU_META parameter missing required separator '/', format should be: branch name/custom identifier (optional)/commit hash (optional)"
+          echo "Error: KSU_META must be: branch/custom-tag(optional)/commit-hash(optional). Example: susfs-main/⚡Ultra⚡/ or next/UltraTag/abcdef12"
           exit 10
         fi
-        IFS='/' read -r BRANCH_NAME CUSTOM_TAG MANUAL_HASH <<< "$META"
-        echo "Branch name: $BRANCH_NAME"
+        IFS='/' read -r META_BRANCH CUSTOM_TAG MANUAL_HASH <<< "$META"
+        echo "META branch: $META_BRANCH"
         [[ -n "$CUSTOM_TAG" ]] && echo "Custom version identifier: $CUSTOM_TAG" || echo "Custom version identifier: disabled"
         [[ -n "$MANUAL_HASH" ]] && echo "Manual hash: $MANUAL_HASH" || echo "Manual hash: disabled"
-        echo "KSU_BRANCH=$BRANCH_NAME" >> "$GITHUB_ENV"
-        curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s "$BRANCH_NAME"
+
+        KSU_SETUP_BRANCH="${{ inputs.ksun_branch }}"
+        echo "KSU_BRANCH=$KSU_SETUP_BRANCH" >> "$GITHUB_ENV"
+
+        echo "Downloading KernelSU setup.sh..."
+        curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" -o /tmp/sukisu_setup.sh
+        chmod +x /tmp/sukisu_setup.sh
+        echo "Running setup.sh with branch '${KSU_SETUP_BRANCH}'"
+        set -x
+        bash /tmp/sukisu_setup.sh "${KSU_SETUP_BRANCH}"
+        rc=$?
+        set +x
+        echo "setup.sh rc=$rc"
+        if [[ $rc -ne 0 ]]; then
+          echo "SukiSU setup failed with rc=$rc"
+          exit $rc
+        fi
+
         cd ./KernelSU
+
         if [[ -n "$MANUAL_HASH" ]]; then
-          git fetch origin "$BRANCH_NAME" --depth=50
+          git fetch origin "${KSU_SETUP_BRANCH}" --depth=50 || true
           git checkout "$MANUAL_HASH"
           SHORT_HASH=${MANUAL_HASH:0:8}
         fi
-        KSU_API_VERSION=$(curl -fsSL "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/$BRANCH_NAME/kernel/Makefile" | \
-          grep -m1 "KSU_VERSION_API :=" | awk -F'= ' '{print $2}' | tr -d '[:space:]')
+
+        # Obtain KSU API version from META branch Makefile (for tagging), fallback to minimum
+        KSU_API_VERSION=$(curl -fsSL "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/${META_BRANCH}/kernel/Makefile" | \
+          grep -m1 "KSU_VERSION_API :=" | awk -F'= ' '{print $2}' | tr -d '[:space:]' || true)
         if [[ -z "$KSU_API_VERSION" || "$(printf '%s\n' "$KSU_API_VERSION" "3.1.7" | sort -V | head -n1)" != "3.1.7" ]]; then
           KSU_API_VERSION="3.1.7"
         fi
         echo "KSU_API_VERSION=$KSU_API_VERSION" >> "$GITHUB_ENV"
+
         GIT_HASH=$(git rev-parse --short HEAD)
         if [[ -n "$MANUAL_HASH" ]]; then
           USE_HASH="$SHORT_HASH"
@@ -352,13 +374,15 @@ runs:
           USE_HASH="$GIT_HASH"
         fi
         if [[ -z "$CUSTOM_TAG" ]]; then
-          VERSION_FULL="v$KSU_API_VERSION-$USE_HASH@$BRANCH_NAME"
+          VERSION_FULL="v$KSU_API_VERSION-$USE_HASH@${KSU_SETUP_BRANCH}"
         else
-          VERSION_FULL="v$KSU_API_VERSION-$CUSTOM_TAG@$BRANCH_NAME[$USE_HASH]"
+          VERSION_FULL="v$KSU_API_VERSION-$CUSTOM_TAG@${KSU_SETUP_BRANCH}[$USE_HASH]"
         fi
-        sed -i '/define get_ksu_version_full/,/endef/d' kernel/Makefile
-        sed -i '/KSU_VERSION_API :=/d' kernel/Makefile
-        sed -i '/KSU_VERSION_FULL :=/d' kernel/Makefile
+
+        # Stamp KernelSU/kernel/Makefile
+        sed -i '/define get_ksu_version_full/,/endef/d' kernel/Makefile || true
+        sed -i '/KSU_VERSION_API :=/d' kernel/Makefile || true
+        sed -i '/KSU_VERSION_FULL :=/d' kernel/Makefile || true
         VERSION_DEFINITIONS=$(cat <<EOF
         define get_ksu_version_full
         $VERSION_FULL
@@ -372,7 +396,9 @@ runs:
           1
           END {if (!inserted) print def}
         ' kernel/Makefile > kernel/Makefile.tmp && mv kernel/Makefile.tmp kernel/Makefile
-        KSU_VERSION=$(expr $(git rev-list --count main 2>/dev/null || echo 13000) + 10700)
+
+        # Derive a build number-like version
+        KSU_VERSION=$(expr $(git rev-list --count "${KSU_SETUP_BRANCH}" 2>/dev/null || echo 13000) + 10700)
         echo "KSUVER=$KSU_VERSION" >> "$GITHUB_ENV"
         echo "::group::Final Makefile version info and partial debug results preview"
         grep -A10 "REPO_OWNER" kernel/Makefile || true
