@@ -215,7 +215,7 @@ jobs:
           fetch-depth: 1
 
       - name: Build Kernel
-        uses: ./.github/actions/build
+        uses: ./.github/actions/
         env:
           SUSFS_JSON: ${{ inputs.susfs_mapping_json }}
         with:
