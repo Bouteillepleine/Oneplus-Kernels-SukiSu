@@ -155,7 +155,7 @@ jobs:
           fi
 
       - name: Build Kernel
-        uses: ./.github/actions/build
+        uses: ./.github/actions/action
         env:
           SUSFS_JSON: ${{ inputs.susfs_mapping_json }}
         with:
