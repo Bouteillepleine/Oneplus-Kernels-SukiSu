@@ -23,10 +23,6 @@ inputs:
     required: true
     type: string
     default: stable
-  susfs_branch:
-    required: true
-    type: string
-    default: ""
   KSU_META:
     description: 'SukiSU Ultra branch/custom version identifier (e.g., susfs-main/⚡Ultra⚡/)'
     required: false
@@ -133,7 +129,7 @@ runs:
         sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
           git curl ca-certificates build-essential clang lld flex bison \
           libelf-dev libssl-dev libncurses-dev zlib1g-dev liblz4-tool \
-          libxml2-utils rsync unzip dwarves file python3
+          libxml2-utils rsync unzip dwarves file python3 jq
         sudo apt-get clean
         echo "::endgroup::"
 
@@ -249,6 +245,50 @@ runs:
           echo "No BRANCH found in build.config files (build.config.common/constants); keeping existing values if set."
         fi
 
+    - name: Resolve SUSFS Branch
+      shell: bash
+      run: |
+        set -euo pipefail
+        JSON="${SUSFS_JSON:-}"
+        A="${KANDROID_VERSION:-}"
+        K="${KERNEL_VERSION:-}"
+        if [[ -z "$A" || -z "$K" ]]; then
+          echo "ERROR: Missing KANDROID_VERSION ('$A') or KERNEL_VERSION ('$K') before resolving SUSFS branch." >&2
+          exit 1
+        fi
+        key="${A}-${K}"
+        declare -A map=(
+          ["android12-5.10"]=""
+          ["android13-5.10"]=""
+          ["android13-5.15"]=""
+          ["android14-5.15"]=""
+          ["android14-6.1"]=""
+          ["android15-6.6"]=""
+        )
+        if [[ -n "$JSON" ]]; then
+          if jq empty <<<"$JSON" >/dev/null 2>&1; then
+            for k in "${!map[@]}"; do
+              v=$(jq -r --arg k "$k" '.[$k] // empty' <<<"$JSON" 2>/dev/null || echo "")
+              if [[ -n "$v" && "$v" != "null" ]]; then
+                map["$k"]="$v"
+              fi
+            done
+          else
+            echo "WARNING: Invalid SUSFS_JSON provided, ignoring."
+          fi
+        fi
+        if [[ -z "${map[$key]+_exists}" ]]; then
+          echo "ERROR: Unsupported Android/Kernel combo: $key" >&2
+          echo "Supported combos: ${!map[*]}" >&2
+          exit 1
+        fi
+        susfs_branch="${map[$key]}"
+        if [[ -z "$susfs_branch" ]]; then
+          susfs_branch="gki-${key}"
+        fi
+        echo "SUSFS_KERNEL_BRANCH=$susfs_branch" >> "$GITHUB_ENV"
+        echo "Resolved SUSFS branch: $susfs_branch"
+
     - name: Derive Build Metadata (env)
       shell: bash
       run: |
@@ -296,7 +336,7 @@ runs:
         if [[ -z "$KSU_API_VERSION" || "$(printf '%s\n' "$KSU_API_VERSION" "3.1.7" | sort -V | head -n1)" != "3.1.7" ]]; then
           KSU_API_VERSION="3.1.7"
         fi
-        echo "KSU_API_VERSION=$KSU_API_VERSION" >> $GITHUB_ENV
+        echo "KSU_API_VERSION=$KSU_API_VERSION" >> "$GITHUB_ENV"
         GIT_HASH=$(git rev-parse --short HEAD)
         if [[ -n "$MANUAL_HASH" ]]; then
           USE_HASH="$SHORT_HASH"
@@ -325,7 +365,7 @@ runs:
           END {if (!inserted) print def}
         ' kernel/Makefile > kernel/Makefile.tmp && mv kernel/Makefile.tmp kernel/Makefile
         KSU_VERSION=$(expr $(git rev-list --count main 2>/dev/null || echo 13000) + 10700)
-        echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
+        echo "KSUVER=$KSU_VERSION" >> "$GITHUB_ENV"
         echo "::group::Final Makefile version info and partial debug results preview"
         grep -A10 "REPO_OWNER" kernel/Makefile || true
         grep "KSU_VERSION_FULL" kernel/Makefile || true
@@ -336,11 +376,10 @@ runs:
       run: |
         set -euo pipefail
         cd "$CONFIG"
-        git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${KANDROID_VERSION}-${KERNEL_VERSION}
-        echo "SUSFS_KERNEL_BRANCH=gki-${KANDROID_VERSION}-${KERNEL_VERSION}" >> "$GITHUB_ENV"
+        echo "Fetching susfs patches"
+        git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "${SUSFS_KERNEL_BRANCH}"
         git clone https://github.com/ShirkNeko/SukiSU_patch.git
         cd kernel_platform
-        echo "Fetching susfs patches"
         cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${KANDROID_VERSION}-${KERNEL_VERSION}.patch ./common/
         cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
         cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
@@ -361,7 +400,7 @@ runs:
           if grep -q 'common-modules/trusty' "$GITHUB_WORKSPACE/.repo/manifests_fallback/${file}.xml"; then
             TRUSTY_EXISTS="true"
           fi
-          echo "trusty_exists=$TRUSTY_EXISTS" >> $GITHUB_OUTPUT
+          echo "trusty_exists=$TRUSTY_EXISTS" >> "$GITHUB_OUTPUT"
           if [[ "$TRUSTY_EXISTS" == "false" && "$(printf '%s\n' "$TKERNEL_VERSION" "6.6.30" | sort -V | head -n1)" = "$TKERNEL_VERSION" ]]; then
             echo "Fixing susfs errors caused by missing Trusty OS on some kernel 6.6 models"
             sed -i 's/-32,12 +32,38/-32,11 +32,37/g' 50_add_susfs_in_gki-${KANDROID_VERSION}-${KERNEL_VERSION}.patch
@@ -439,11 +478,8 @@ runs:
         cd "$GITHUB_WORKSPACE/${CONFIG}/kernel_platform"
         CONFIG_FILE=./common/arch/arm64/configs/gki_defconfig
         KERNEL_VERSION="${KERNEL_VERSION}"
-        # SukiSU Ultra
         echo "CONFIG_KSU=y" >> "$CONFIG_FILE"
-        # KPM
         echo "CONFIG_KPM=y" >> "$CONFIG_FILE"
-        # HOOK
         if [ "${{ inputs.HOOK }}" = "kprobe" ]; then
           echo "CONFIG_KSU_SUSFS_SUS_SU=y" >> "$CONFIG_FILE"
           echo "CONFIG_KPROBES=y" >> "$CONFIG_FILE"
@@ -455,7 +491,6 @@ runs:
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$CONFIG_FILE"
           echo "CONFIG_KSU_TRACEPOINT_HOOK=y" >> "$CONFIG_FILE"
         fi
-        # SUSFS
         echo "CONFIG_KSU_SUSFS=y" >> "$CONFIG_FILE"
         echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$CONFIG_FILE"
         echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "$CONFIG_FILE"
@@ -470,29 +505,23 @@ runs:
         echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$CONFIG_FILE"
         echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$CONFIG_FILE"
         echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$CONFIG_FILE"
-        # TMPFS
         echo "CONFIG_TMPFS_XATTR=y" >> "$CONFIG_FILE"
         echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$CONFIG_FILE"
-        # BBR
         echo "CONFIG_TCP_CONG_ADVANCED=y" >> "$CONFIG_FILE"
         echo "CONFIG_TCP_CONG_BBR=y" >> "$CONFIG_FILE"
         echo "CONFIG_NET_SCH_FQ=y" >> "$CONFIG_FILE"
-        echo "CONFIG_NET_SCH_FQ_CODEL=y" >> "$CONFIG_FILE"        
-        # ECN
+        echo "CONFIG_NET_SCH_FQ_CODEL=y" >> "$CONFIG_FILE"
         echo "CONFIG_IP_ECN=y" >> "$CONFIG_FILE"
         echo "CONFIG_TCP_ECN=y" >> "$CONFIG_FILE"
         echo "CONFIG_IPV6_ECN=y" >> "$CONFIG_FILE"
         echo "CONFIG_IP_NF_TARGET_ECN=y" >> "$CONFIG_FILE"
-        # TTL
         echo "CONFIG_IP_NF_TARGET_TTL=y" >> "$CONFIG_FILE"
         echo "CONFIG_IP6_NF_TARGET_HL=y" >> "$CONFIG_FILE"
         echo "CONFIG_IP6_NF_MATCH_HL=y" >> "$CONFIG_FILE"
-        # Optimisation
         echo "CONFIG_LTO_CLANG_THIN=y" >> "$CONFIG_FILE"
         echo "CONFIG_LTO_CLANG=y" >> "$CONFIG_FILE"
         echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> "$CONFIG_FILE"
-        echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=n" >> "$CONFIG_FILE"    
-        # LSM
+        echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=n" >> "$CONFIG_FILE"
         if [ "${{ inputs.LSM }}" = "true" ]; then
           echo "CONFIG_BBG=y" >> "$CONFIG_FILE"
         fi
@@ -581,7 +610,7 @@ runs:
           scripts/config --file "$OUT/.config" --set-str LOCALVERSION "${CUSTOM_LOCALVERSION}"
           scripts/config --file "$OUT/.config" -d LOCALVERSION_AUTO || true
           sed -i 's/scm_version="$(scm_version --short)"/scm_version=""/' scripts/setlocalversion
-        fi        
+        fi
         if [ "${{ inputs.optimize_level }}" = "O3" ]; then
           scripts/config --file "$OUT/.config" -d CC_OPTIMIZE_FOR_PERFORMANCE
           scripts/config --file "$OUT/.config" -e CC_OPTIMIZE_FOR_PERFORMANCE_O3
