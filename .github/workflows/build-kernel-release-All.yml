@@ -220,31 +220,25 @@ jobs:
           echo "=== Start building the release notes ==="
           cat << 'EOF' > release_notes.md
           This release contains SukiSU
-      
+
           ### Built Devices
-      
-          | Model | Kernel Version | SukiSU Version |
-          |-------|----------------|----------------|
+
+          | Model | Kernel Version |
+          |-------|----------------|
           EOF
           if [ -d "./downloaded-artifacts" ]; then
             for dir in ./downloaded-artifacts/kernel-*; do
-              if [ -d "$dir" ]; then
-                model=$(basename "$dir" | sed 's/^kernel-//')
-                txt_file="$dir/$model.txt"
-                metadata_file="$dir/$model.metadata.json"
-                version="Unknown"
-                ksu_version="Unknown"
-                if [ -f "$txt_file" ]; then
-                  version=$(cat "$txt_file" 2>/dev/null || echo "Unknown")
-                fi
-                if [ -f "$metadata_file" ]; then
-                  ksu_version=$(jq -r '.ksu_version // "Unknown"' "$metadata_file")
-                fi
-                # Only include models that produced a ZIP
-                if compgen -G "$dir/*.zip" > /dev/null; then
-                  printf "| %-12s | %-14s | %-14s |\n" \
-                    "$model" "$version" "$ksu_version" >> release_notes.md
-                fi
+              [ -d "$dir" ] || continue
+              model=$(basename "$dir" | sed 's/^kernel-//')
+              txt_file="$dir/$model.txt"
+              version="Unknown"
+              if [ -f "$txt_file" ]; then
+                version=$(cat "$txt_file" 2>/dev/null || echo "Unknown")
+              fi
+              # Only include models that produced a ZIP
+              if compgen -G "$dir/*.zip" > /dev/null; then
+                printf "| %-12s | %-14s |\n" \
+                  "$model" "$version" >> release_notes.md
               fi
             done
           fi
@@ -275,7 +269,6 @@ jobs:
             echo "ERROR: Release ${TAG_TO_UPLOAD} not found. Aborting upload." >&2
             exit 1
           fi
-
           shopt -s nullglob
           files=(./downloaded-artifacts/*/*.zip)
           echo "Found ${#files[@]} zip assets to upload."
@@ -283,51 +276,51 @@ jobs:
             echo "No ZIP assets found; nothing to upload."
             exit 0
           fi
-
+          # Avoid aborting mid-loop on a single failure
+          set +e
           existing_json=$(gh release view "${TAG_TO_UPLOAD}" --json assets --repo "${REPO_OWNER}/${REPO_NAME}" || echo '{}')
           upload_count=0
           failed=0
-
           for file in "${files[@]}"; do
             name=$(basename "$file")
-            size=$(stat -c %s "$file" || echo 0)
-            sha=$(sha256sum "$file" | cut -d' ' -f1 || echo unknown)
+            size=$(stat -c %s "$file" 2>/dev/null || echo 0)
+            sha=$(sha256sum "$file" 2>/dev/null | cut -d' ' -f1 || echo unknown)
             echo "Preparing to upload: $name (size=${size}B sha256=${sha})"
-
-            asset_id=$(echo "$existing_json" | jq -r --arg NAME "$name" '.assets[]? | select(.name==$NAME) | .id' | head -n1 || true)
+            asset_id=$(echo "$existing_json" | jq -r --arg NAME "$name" '.assets[]? | select(.name==$NAME) | .id' 2>/dev/null | head -n1 || true)
             if [ -n "${asset_id:-}" ] && [ "$asset_id" != "null" ]; then
               echo "Asset '$name' already exists (id=$asset_id). Deleting before upload..."
-              if ! gh api \
-                -X DELETE \
-                -H "Accept: application/vnd.github+json" \
-                "/repos/${REPO_OWNER}/${REPO_NAME}/releases/assets/${asset_id}"; then
-                echo "WARNING: Failed to delete existing asset '$name'; will try --clobber upload."
-              else
-                existing_json=$(gh release view "${TAG_TO_UPLOAD}" --json assets --repo "${REPO_OWNER}/${REPO_NAME}" || echo '{}')
-              fi
+              gh api -X DELETE -H "Accept: application/vnd.github+json" \
+                "/repos/${REPO_OWNER}/${REPO_NAME}/releases/assets/${asset_id}"
+              # Refresh asset list after deletion (ignore errors)
+              existing_json=$(gh release view "${TAG_TO_UPLOAD}" --json assets --repo "${REPO_OWNER}/${REPO_NAME}" || echo '{}')
             fi
-
             tries=0
-            until [ $tries -ge 3 ]; do
+            ok=0
+            while [ $tries -lt 3 ]; do
               echo "Uploading $file (attempt $((tries+1))/3)..."
-              if gh release upload "${TAG_TO_UPLOAD}" "$file" --clobber --repo "${REPO_OWNER}/${REPO_NAME}"; then
-                ((upload_count++))
+              gh release upload "${TAG_TO_UPLOAD}" "$file" --clobber --repo "${REPO_OWNER}/${REPO_NAME}"
+              rc=$?
+              if [ $rc -eq 0 ]; then
+                upload_count=$((upload_count+1))
                 echo "Uploaded: $name"
+                ok=1
                 break
               else
-                rc=$?
                 echo "Upload failed for $name with rc=$rc. Retrying in 5s..."
                 sleep 5
-                ((tries++))
+                tries=$((tries+1))
               fi
             done
-            if [ $tries -ge 3 ]; then
+            if [ $ok -ne 1 ]; then
               echo "ERROR: Upload failed for $name after retries."
-              ((failed++))
+              failed=$((failed+1))
             fi
           done
           shopt -u nullglob
           echo "Uploaded $upload_count assets; failed: $failed"
-          if [ $upload_count -eq 0 ] && [ ${#files[@]} -gt 0 ]; then
+          if [ $upload_count -gt 0 ]; then
+            exit 0
+          else
+            echo "No assets uploaded successfully."
             exit 1
           fi
