@@ -39,7 +39,7 @@ This repository provides GitHub Actions workflows to automatically build flashab
 | OnePlus 13S | `oneplus_13s` |
 | OnePlus Ace 5 Pro | `oneplus_ace5_pro` |
 | OnePlus Ace 5 Ultra | `oneplus_ace5_ultra` |
-| OnePlus Ace 3V | `oneplus_ace3_v` (alias of OP13T) |
+| OnePlus Ace 3V | `oneplus_ace3_v` |
 | OnePlus Pad 3 | `oneplus_pad_3` |
 | OnePlus Pad 2 Pro | `oneplus_pad_2_pro` |
 
@@ -165,7 +165,7 @@ This project follows the licensing of its upstream components. Please refer to i
 | OnePlus 13S | `oneplus_13s` |
 | OnePlus Ace 5 Pro | `oneplus_ace5_pro` |
 | OnePlus Ace 5 Ultra | `oneplus_ace5_ultra` |
-| OnePlus Ace 3V | `oneplus_ace3_v` (OP13T 的别名) |
+| OnePlus Ace 3V | `oneplus_ace3_v` |
 | OnePlus Pad 3 | `oneplus_pad_3` |
 | OnePlus Pad 2 Pro | `oneplus_pad_2_pro` |
 
