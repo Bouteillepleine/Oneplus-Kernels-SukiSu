@@ -24,17 +24,17 @@ inputs:
     type: string
     default: stable
   susfs_branch:
-    description: SUSFS branch for kernel build
+    description: "SUSFS branch for kernel build"
     required: false
     type: string
-    default: ''
+    default: ""
   KSU_META:
-    description: SukiSU Ultra branch/custom version identifier (e.g., susfs-main/⚡Ultra⚡/)
+    description: "SukiSU Ultra branch/custom version identifier (e.g., susfs-main/⚡Ultra⚡/)"
     required: false
     type: string
-    default: susfs-main/⚡Ultra⚡/
+    default: "susfs-main/⚡Ultra⚡/"
   HOOK:
-    description: Hook type
+    description: "Hook type"
     required: false
     type: choice
     default: manual
@@ -43,7 +43,7 @@ inputs:
       - manual
       - tracepoint
   LSM:
-    description: Enable kernel-level Baseband Guard (LSM)?
+    description: "Enable kernel-level Baseband Guard (LSM)?"
     required: false
     type: boolean
     default: false
@@ -52,10 +52,10 @@ inputs:
     type: string
     default: O2
   gh_token:
-    description: GitHub token for downloading SUSFS CI artifact (pass from calling workflow: secrets.GITHUB_TOKEN)
+    description: "GitHub token for downloading SUSFS CI artifact (pass from calling workflow: secrets.GITHUB_TOKEN)"
     required: false
     type: string
-    default: ''
+    default: ""
 
 outputs:
   kernel_version:
@@ -448,7 +448,7 @@ EOF
           patch -p1 -F 3 < sukisu_tracepoint_hooks_v1.1.patch
         fi
     - name: Apply LSM Baseband Guard
-      if: ${{ inputs.LSM == 'true' }}
+      if: ${{ inputs.LSM }}
       shell: bash
       run: |
         set -euo pipefail
@@ -566,7 +566,7 @@ EOF
         CLANG_FOUND=false
         for base in "$KP/prebuilts" "$KP/prebuilts-master"; do
           [ -d "$base/clang/host/linux-x86" ] || continue
-          latest=$(ls -d "$base"/clang/host/linux-x86/clang-r*/ 2>/dev/null | sort -V | tail -n1 || true)
+          latest=$(ls -d "$base/clang/host/linux-x86/clang-r*/" 2>/dev/null | sort -V | tail -n1 || true)
           if [ -n "$latest" ] && [ -x "$latest/bin/clang" ]; then
             CLANG_BIN="$latest/bin"
             CLANG_FOUND=true
