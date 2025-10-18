@@ -103,12 +103,12 @@ runs:
             echo "Manifest URL must be HTTPS"
             exit 1
           fi
-          if ! [[ "$manifest" =~ .xml($|?) ]]; then
+          if ! [[ "$manifest" =~ \.xml($|\?) ]]; then
             echo "Manifest URL should point to an XML file (.xml)"
             exit 1
           fi
         else
-          if ! [[ "$manifest" =~ .xml$ ]]; then
+          if ! [[ "$manifest" =~ \.xml$ ]]; then
             echo "Manifest filename must end with .xml"
             exit 1
           fi
@@ -123,13 +123,14 @@ runs:
         esac
         echo "Input validation OK."
         echo "::endgroup::"
-        
+
     - name: Init Derived Env
       shell: bash
       run: |
+        set -euo pipefail
         echo "KANDROID_VERSION=${{ inputs.android_version }}" >> "$GITHUB_ENV"
         echo "KERNEL_VERSION=${{ inputs.kernel_version }}" >> "$GITHUB_ENV"
-        
+
     - name: Install Minimal Dependencies
       shell: bash
       run: |
@@ -139,16 +140,17 @@ runs:
         sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
           git curl ca-certificates build-essential clang lld flex bison \
           libelf-dev libssl-dev libncurses-dev zlib1g-dev liblz4-tool \
-          libxml2-utils rsync unzip dwarves file python3 jq
+          libxml2-utils rsync unzip dwarves file python3 jq llvm
         sudo apt-get clean
         echo "::endgroup::"
-        
+
     - name: Configure Git
       shell: bash
       run: |
+        set -euo pipefail
         git config --global user.name "Bouteille"
         git config --global user.email "Bouteille@qq.com"
-        
+
     - name: Setup Base Environment
       shell: bash
       run: |
@@ -161,14 +163,14 @@ runs:
           chmod +x "$REPO"
         fi
         echo "REPO=$REPO" >> "$GITHUB_ENV"
-        
+
     - name: Clone AnyKernel3
       shell: bash
       run: |
         set -euo pipefail
         echo "Cloning AnyKernel3..."
         git clone https://github.com/Bouteillepleine/AnyKernel3.git -b gki-2.0
-        
+
     - name: Prepare Manifest Fallback (compat)
       shell: bash
       run: |
@@ -186,7 +188,7 @@ runs:
             echo "FILE=${FILE_BASENAME}" >> "$GITHUB_ENV"
           fi
         fi
-        
+
     - name: Initialize and Sync Kernel Source
       shell: bash
       run: |
@@ -207,7 +209,7 @@ runs:
         fi
         "$REPO" --version
         "$REPO" --trace sync -c --no-clone-bundle --no-tags --optimized-fetch -j"$(nproc --all)" --fail-fast
-        
+
     - name: Mirror manifest into fallback (post-sync)
       if: ${{ inputs.manifest != '' && !startsWith(inputs.manifest, 'https://') }}
       shell: bash
@@ -218,7 +220,7 @@ runs:
         if [ -f "$SRC" ]; then
           cp -f "$SRC" "$GITHUB_WORKSPACE/.repo/manifests_fallback/${{ inputs.manifest }}"
         fi
-        
+
     - name: Clean Up ABI Protected Exports
       shell: bash
       run: |
@@ -227,7 +229,7 @@ runs:
         rm -f common/android/abi_gki_protected_exports_* || echo "No protected exports in common!"
         rm -f msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports in msm-kernel!"
         df -h
-        
+
     - name: Derive Kernel / Manifest Metadata
       shell: bash
       run: |
@@ -240,13 +242,13 @@ runs:
         fi
         MANIFEST_PATH="$GITHUB_WORKSPACE/${CONFIG}/.repo/manifests/${MANIFEST_BASENAME}"
         echo "MANIFEST_PATH=$MANIFEST_PATH" >> "$GITHUB_ENV"
-        V=$(grep -m1 '^VERSION *=' Makefile | awk '{print $3}')
-        P=$(grep -m1 '^PATCHLEVEL *=' Makefile | awk '{print $3}')
-        S=$(grep -m1 '^SUBLEVEL *=' Makefile | awk '{print $3}')
+        V=$(grep -m1 '^VERSION *=' Makefile | awk '{print $3}' || echo "0")
+        P=$(grep -m1 '^PATCHLEVEL *=' Makefile | awk '{print $3}' || echo "0")
+        S=$(grep -m1 '^SUBLEVEL *=' Makefile | awk '{print $3}' || echo "0")
         FULL="$V.$P.$S"
         echo "TKERNEL_VERSION=$FULL" >> "$GITHUB_ENV"
         echo "Full kernel version: $FULL"
-        
+
     - name: Derive Android/Kernel Branch
       shell: bash
       run: |
@@ -258,6 +260,7 @@ runs:
         else
           echo "No BRANCH found in build.config files; using input values KANDROID_VERSION=${{ inputs.android_version }}; KERNEL_VERSION=${{ inputs.kernel_version }}"
         fi
+
     - name: Resolve SUSFS Branch
       shell: bash
       run: |
@@ -306,55 +309,75 @@ runs:
           echo "SUSFS_KERNEL_BRANCH=$susfs_branch" >> "$GITHUB_ENV"
           echo "Resolved SUSFS branch: $susfs_branch"
         fi
-        
+
     - name: Derive Build Metadata (env)
       shell: bash
       run: |
         set -euo pipefail
         KP="$GITHUB_WORKSPACE/${CONFIG}/kernel_platform/common"
-        V=$(grep -m1 '^VERSION *=' "$KP/Makefile" | awk '{print $3}')
-        P=$(grep -m1 '^PATCHLEVEL *=' "$KP/Makefile" | awk '{print $3}')
-        S=$(grep -m1 '^SUBLEVEL *=' "$KP/Makefile" | awk '{print $3}')
+        V=$(grep -m1 '^VERSION *=' "$KP/Makefile" | awk '{print $3}' || echo "0")
+        P=$(grep -m1 '^PATCHLEVEL *=' "$KP/Makefile" | awk '{print $3}' || echo "0")
+        S=$(grep -m1 '^SUBLEVEL *=' "$KP/Makefile" | awk '{print $3}' || echo "0")
         FULL="$V.$P.$S"
         echo "KERNEL_FULL_VER=$FULL" >> "$GITHUB_ENV"
         echo "ANDROID_VER=${KANDROID_VERSION}" >> "$GITHUB_ENV"
         echo "KERNEL_VER=${KERNEL_VERSION}" >> "$GITHUB_ENV"
-        
+
     - name: Branding
       shell: bash
       run: |
         set -euo pipefail
         CUSTOM_LOCALVERSION="-${KANDROID_VERSION}-OnePlus-UltraBolt"
         echo "CUSTOM_LOCALVERSION=$CUSTOM_LOCALVERSION" >> "$GITHUB_ENV"
-        
+
     - name: Add SukiSU Ultra
       shell: bash
       run: |
         set -euo pipefail
+        export LC_ALL=C.UTF-8
+        export LANG=C.UTF-8
         cd "${CONFIG}/kernel_platform"
         META="${{ inputs.KSU_META }}"
         if [[ "$(grep -o '/' <<< "$META" | wc -l)" -lt 2 ]]; then
-          echo "Error: KSU_META parameter missing required separator '/', format should be: branch name/custom identifier (optional)/commit hash (optional)"
+          echo "Error: KSU_META must be: branch/custom-tag(optional)/commit-hash(optional). Example: susfs-main/⚡Ultra⚡/ or next/UltraTag/abcdef12"
           exit 10
         fi
-        IFS='/' read -r BRANCH_NAME CUSTOM_TAG MANUAL_HASH <<< "$META"
-        echo "Branch name: $BRANCH_NAME"
+        IFS='/' read -r META_BRANCH CUSTOM_TAG MANUAL_HASH <<< "$META"
+        echo "META branch: $META_BRANCH"
         [[ -n "$CUSTOM_TAG" ]] && echo "Custom version identifier: $CUSTOM_TAG" || echo "Custom version identifier: disabled"
         [[ -n "$MANUAL_HASH" ]] && echo "Manual hash: $MANUAL_HASH" || echo "Manual hash: disabled"
-        echo "KSU_BRANCH=$BRANCH_NAME" >> "$GITHUB_ENV"
-        curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s "$BRANCH_NAME"
+
+        KSU_SETUP_BRANCH="${{ inputs.ksun_branch }}"
+        echo "KSU_BRANCH=$KSU_SETUP_BRANCH" >> "$GITHUB_ENV"
+
+        echo "Downloading KernelSU setup.sh..."
+        curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" -o /tmp/sukisu_setup.sh
+        chmod +x /tmp/sukisu_setup.sh
+        echo "Running setup.sh with branch '${KSU_SETUP_BRANCH}'"
+        set -x
+        bash /tmp/sukisu_setup.sh "${KSU_SETUP_BRANCH}"
+        rc=$?
+        set +x
+        echo "setup.sh rc=$rc"
+        if [[ $rc -ne 0 ]]; then
+          echo "SukiSU setup failed with rc=$rc"
+          exit $rc
+        fi
+
         cd ./KernelSU
         if [[ -n "$MANUAL_HASH" ]]; then
-          git fetch origin "$BRANCH_NAME" --depth=50
-          git checkout "$MANUAL_HASH"
+          git fetch origin "${KSU_SETUP_BRANCH}" --depth=50 || true
+          git checkout "$MANUAL_HASH" || { echo "Failed to checkout commit $MANUAL_HASH"; exit 1; }
           SHORT_HASH=${MANUAL_HASH:0:8}
         fi
-        KSU_API_VERSION=$(curl -fsSL "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/$BRANCH_NAME/kernel/Makefile" | \
-          awk -F'KSU_VERSION_API :=' 'NF>1{v=$2; gsub(/[[:space:]]/,"",v); print v; exit}')
+
+        KSU_API_VERSION=$(curl -fsSL "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/${META_BRANCH}/kernel/Makefile" | \
+          grep -m1 "KSU_VERSION_API :=" | awk -F'= ' '{print $2}' | tr -d '[:space:]' || true)
         if [[ -z "$KSU_API_VERSION" || "$(printf '%s\n' "$KSU_API_VERSION" "3.1.7" | sort -V | head -n1)" != "3.1.7" ]]; then
           KSU_API_VERSION="3.1.7"
         fi
         echo "KSU_API_VERSION=$KSU_API_VERSION" >> "$GITHUB_ENV"
+
         GIT_HASH=$(git rev-parse --short HEAD)
         if [[ -n "$MANUAL_HASH" ]]; then
           USE_HASH="$SHORT_HASH"
@@ -362,33 +385,35 @@ runs:
           USE_HASH="$GIT_HASH"
         fi
         if [[ -z "$CUSTOM_TAG" ]]; then
-          VERSION_FULL="v$KSU_API_VERSION-$USE_HASH@$BRANCH_NAME"
+          VERSION_FULL="v$KSU_API_VERSION-$USE_HASH@${KSU_SETUP_BRANCH}"
         else
-          VERSION_FULL="v$KSU_API_VERSION-$CUSTOM_TAG@$BRANCH_NAME[$USE_HASH]"
+          VERSION_FULL="v$KSU_API_VERSION-$CUSTOM_TAG@${KSU_SETUP_BRANCH}[$USE_HASH]"
         fi
-        sed -i '/define get_ksu_version_full/,/endef/d' kernel/Makefile
-        sed -i '/KSU_VERSION_API :=/d' kernel/Makefile
-        sed -i '/KSU_VERSION_FULL :=/d' kernel/Makefile
+
+        sed -i '/define get_ksu_version_full/,/endef/d' kernel/Makefile || true
+        sed -i '/KSU_VERSION_API :=/d' kernel/Makefile || true
+        sed -i '/KSU_VERSION_FULL :=/d' kernel/Makefile || true
         VERSION_DEFINITIONS=$(cat <<EOF
-          define get_ksu_version_full
-          $VERSION_FULL
-          endef
-          KSU_VERSION_API := $KSU_API_VERSION
-          KSU_VERSION_FULL := $VERSION_FULL
-        EOF
+define get_ksu_version_full
+$VERSION_FULL
+endef
+KSU_VERSION_API := $KSU_API_VERSION
+KSU_VERSION_FULL := $VERSION_FULL
+EOF
         )
         awk -v def="$VERSION_DEFINITIONS" '
           /REPO_OWNER :=/ {print; print def; inserted=1; next}
           1
           END {if (!inserted) print def}
         ' kernel/Makefile > kernel/Makefile.tmp && mv kernel/Makefile.tmp kernel/Makefile
-        KSU_VERSION=$(expr $(git rev-list --count main 2>/dev/null || echo 13000) + 10700)
+
+        KSU_VERSION=$(expr $(git rev-list --count "${KSU_SETUP_BRANCH}" 2>/dev/null || echo 13000) + 10700)
         echo "KSUVER=$KSU_VERSION" >> "$GITHUB_ENV"
         echo "::group::Final Makefile version info and partial debug results preview"
         grep -A10 "REPO_OWNER" kernel/Makefile || true
         grep "KSU_VERSION_FULL" kernel/Makefile || true
         echo "::endgroup::"
-        
+
     - name: Apply Patches SukiSU Ultra
       shell: bash
       run: |
@@ -398,56 +423,56 @@ runs:
         git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "${SUSFS_KERNEL_BRANCH}"
         git clone https://github.com/ShirkNeko/SukiSU_patch.git
         cd kernel_platform
-        cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${KANDROID_VERSION}-${KERNEL_VERSION}.patch ./common/
-        cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
-        cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+        cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${KANDROID_VERSION}-${KERNEL_VERSION}.patch ./common/ || { echo "SUSFS patch file missing"; exit 1; }
+        cp -r ../susfs4ksu/kernel_patches/fs/* ./common/fs/ || { echo "SUSFS fs patches missing"; exit 1; }
+        cp -r ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/ || { echo "SUSFS include patches missing"; exit 1; }
         cd ./common
         GKI_V="${KANDROID_VERSION}-${KERNEL_VERSION}"
-        SUBLEVEL=$(grep '^SUBLEVEL *=' Makefile | head -n1 | cut -d= -f2 | tr -d ' ')
-        if [ "$GKI_V" == "android13-5.15" ] && [ "$SUBLEVEL" -lt 123 ]; then
-          echo "Fixing some bugs caused by kernel version 5.15.0 to 5.15.123 only supporting old C libraries"
+        SUBLEVEL=$(grep '^SUBLEVEL *=' Makefile | head -n1 | cut -d= -f2 | tr -d ' ' || echo "0")
+        if [ "$GKI_V" = "android13-5.15" ] && [ "$SUBLEVEL" -lt 123 ]; then
+          echo "Fixing bugs for kernel version 5.15.0 to 5.15.123 (legacy C libraries)"
           curl -Lo fix_5.15.legacy.patch --retry 5 --retry-delay 2 --retry-connrefused https://raw.githubusercontent.com/Numbersf/Action-Build/SukiSU-Ultra/patches/fix_5.15.legacy
-          patch -p1 < fix_5.15.legacy.patch
+          patch -p1 < fix_5.15.legacy.patch || { echo "Failed to apply fix_5.15.legacy.patch"; exit 1; }
           echo "fix_5.15_patch completed"
         fi
         KERNEL_VERSION="${KERNEL_VERSION}"
         TKERNEL_VERSION="${TKERNEL_VERSION}"
         file="${FILE}"
         TRUSTY_EXISTS=false
-        if [[ "$KERNEL_VERSION" == "6.6" ]]; then
+        if [[ "$KERNEL_VERSION" = "6.6" ]]; then
           if grep -q 'common-modules/trusty' "$GITHUB_WORKSPACE/.repo/manifests_fallback/${file}.xml"; then
             TRUSTY_EXISTS=true
           fi
           echo "trusty_exists=$TRUSTY_EXISTS" >> "$GITHUB_OUTPUT"
-          if [[ "$TRUSTY_EXISTS" == "false" && "$(printf '%s\n' "$TKERNEL_VERSION" "6.6.30" | sort -V | head -n1)" = "$TKERNEL_VERSION" ]]; then
+          if [[ "$TRUSTY_EXISTS" = "false" && "$(printf '%s\n' "$TKERNEL_VERSION" "6.6.30" | sort -V | head -n1)" = "$TKERNEL_VERSION" ]]; then
             echo "Fixing susfs errors caused by missing Trusty OS on some kernel 6.6 models"
             sed -i 's/-32,12 +32,38/-32,11 +32,37/g' 50_add_susfs_in_gki-${KANDROID_VERSION}-${KERNEL_VERSION}.patch
             sed -i '/#include <trace\/hooks\/fs.h>/d' 50_add_susfs_in_gki-${KANDROID_VERSION}-${KERNEL_VERSION}.patch
           fi
         fi
         echo "Applying susfs patch"
-        patch -p1 < 50_add_susfs_in_gki-${KANDROID_VERSION}-${KERNEL_VERSION}.patch || true
+        patch -p1 < 50_add_susfs_in_gki-${KANDROID_VERSION}-${KERNEL_VERSION}.patch || { echo "Failed to apply SUSFS patch"; exit 1; }
         echo "susfs_patch completed"
-        
+
     - name: Record SUSFS Version
       shell: bash
       run: |
         set -euo pipefail
         cd "${CONFIG}/susfs4ksu"
-        SUSVER=$(git rev-parse --short HEAD || echo unknown)
+        SUSVER=$(git rev-parse --short HEAD || echo "unknown")
         echo "SUSVER=$SUSVER" >> "$GITHUB_ENV"
-        
+
     - name: Apply Hide Stuff Patches
       shell: bash
       run: |
         set -euo pipefail
         echo "Changing to configuration directory: $CONFIG..."
         cd "$CONFIG/kernel_platform/common"
-        cp ../../SukiSU_patch/69_hide_stuff.patch ./
+        cp ../../SukiSU_patch/69_hide_stuff.patch ./ || { echo "Hide stuff patch missing"; exit 1; }
         echo "Applying hide app patch"
-        patch -p1 -F 3 < 69_hide_stuff.patch
+        patch -p1 -F 3 < 69_hide_stuff.patch || { echo "Failed to apply hide stuff patch"; exit 1; }
         echo "hide app_patch completed"
-        
+
     - name: Apply HOOK
       shell: bash
       run: |
@@ -457,25 +482,33 @@ runs:
         if [ "${{ inputs.HOOK }}" = "kprobe" ]; then
           echo "Invoking kprobe hook"
         elif [ "${{ inputs.HOOK }}" = "manual" ]; then
-          cp ../../SukiSU_patch/hooks/scope_min_manual_hooks_v1.5.patch ./
+          cp ../../SukiSU_patch/hooks/scope_min_manual_hooks_v1.5.patch ./ || { echo "Manual hook patch missing"; exit 1; }
           echo "Invoking manual hook"
-          patch -p1 -F 3 < scope_min_manual_hooks_v1.5.patch
+          patch -p1 -F 3 < scope_min_manual_hooks_v1.5.patch || { echo "Failed to apply manual hook patch"; exit 1; }
         elif [ "${{ inputs.HOOK }}" = "tracepoint" ]; then
-          cp ../../SukiSU_patch/hooks/sukisu_tracepoint_hooks_v1.1.patch ./
+          cp ../../SukiSU_patch/hooks/sukisu_tracepoint_hooks_v1.1.patch ./ || { echo "Tracepoint hook patch missing"; exit 1; }
           echo "Invoking tracepoint hook"
-          patch -p1 -F 3 < sukisu_tracepoint_hooks_v1.1.patch
+          patch -p1 -F 3 < sukisu_tracepoint_hooks_v1.1.patch || { echo "Failed to apply tracepoint hook patch"; exit 1; }
         fi
-        
+
     - name: Apply LSM Baseband Guard
-      if: ${{ inputs.LSM }}
+      if: ${{ inputs.LSM == 'true' }}
       shell: bash
       run: |
         set -euo pipefail
         cd "$GITHUB_WORKSPACE/${CONFIG}/kernel_platform/common"
         echo "Enabling Baseband Guard (LSM)..."
-        curl -LSs https://raw.githubusercontent.com/vc-teahouse/Baseband-guard/main/setup.sh | bash
-        sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/lockdown/lockdown,baseband_guard/ } }' ./security/Kconfig
-        
+        curl -LSs https://raw.githubusercontent.com/vc-teahouse/Baseband-guard/main/setup.sh -o /tmp/baseband_guard_setup.sh
+        chmod +x /tmp/baseband_guard_setup.sh
+        bash /tmp/baseband_guard_setup.sh || { echo "Failed to run Baseband Guard setup"; exit 1; }
+        if grep -q '^config LSM' security/Kconfig; then
+          if awk '/^config LSM$/{f=1} f && /default/{print; exit}' security/Kconfig | grep -q 'lockdown'; then
+            sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/lockdown/lockdown,baseband_guard/ } }' security/Kconfig
+          else
+            sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/bpf/bpf,baseband_guard/ } }' security/Kconfig
+          fi
+        fi
+
     - name: Convert HMBIRD_OGKI to HMBIRD_GKI (6.6 only)
       shell: bash
       run: |
@@ -485,12 +518,14 @@ runs:
           exit 0
         fi
         cd "${CONFIG}/kernel_platform/common"
-        curl -fL -o hmbird_patch.patch https://raw.githubusercontent.com/Numbersf/Action-Build/SukiSU-Ultra/patches/hmbird_patch.patch
+        curl -fL -o hmbird_patch.patch https://raw.githubusercontent.com/Numbersf/Action-Build/SukiSU-Ultra/patches/hmbird_patch.patch || { echo "Failed to download HMBIRD patch"; exit 1; }
         grep -q 'hmbird_patch.o' drivers/Makefile || echo 'obj-y += hmbird_patch.o' >> drivers/Makefile
         patch -p1 -F 3 < hmbird_patch.patch || echo "hmbird patch failed (non-fatal)"
-        
+
     - name: Add KernelSU / SUSFS Config
       shell: bash
+      env:
+        LSM_ENABLED: ${{ inputs.LSM && '1' || '' }}
       run: |
         set -euo pipefail
         cd "$GITHUB_WORKSPACE/${CONFIG}/kernel_platform"
@@ -541,10 +576,10 @@ runs:
         echo "CONFIG_LTO_CLANG=y" >> "$CONFIG_FILE"
         echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> "$CONFIG_FILE"
         echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=n" >> "$CONFIG_FILE"
-        if [ "${{ inputs.LSM }}" = "true" ]; then
+        if [ -n "${LSM_ENABLED:-}" ]; then
           echo "CONFIG_BBG=y" >> "$CONFIG_FILE"
         fi
-        
+
     - name: Add sched_ext (6.6 only)
       shell: bash
       run: |
@@ -555,9 +590,9 @@ runs:
         fi
         cd "${CONFIG}/kernel_platform"
         git clone https://github.com/HanKuCha/sched_ext.git
-        cp -r sched_ext/* ./common/kernel/sched/
-        
+        cp -r sched_ext/* ./common/kernel/sched/ || { echo "Failed to copy sched_ext files"; exit 1; }
         rm -rf sched_ext/.git
+
     - name: Save Build Metadata
       id: save_metadata
       shell: bash
@@ -567,15 +602,15 @@ runs:
         ARTIFACTS_DIR="$CONFIG_DIR/artifacts"
         mkdir -p "$ARTIFACTS_DIR"
         KP="$CONFIG_DIR/kernel_platform/common"
-        V=$(grep -m1 '^VERSION *=' "$KP/Makefile" | awk '{print $3}')
-        P=$(grep -m1 '^PATCHLEVEL *=' "$KP/Makefile" | awk '{print $3}')
-        S=$(grep -m1 '^SUBLEVEL *=' "$KP/Makefile" | awk '{print $3}')
+        V=$(grep -m1 '^VERSION *=' "$KP/Makefile" | awk '{print $3}' || echo "0")
+        P=$(grep -m1 '^PATCHLEVEL *=' "$KP/Makefile" | awk '{print $3}' || echo "0")
+        S=$(grep -m1 '^SUBLEVEL *=' "$KP/Makefile" | awk '{print $3}' || echo "0")
         FULL="$V.$P.$S"
         echo "${ANDROID_VER:-unknown}-${FULL}" > "$ARTIFACTS_DIR/${CONFIG}.txt"
         echo "kernel_version=$FULL" >> "$GITHUB_OUTPUT"
         echo "ksu_version=${KSUVER:-unknown}" >> "$GITHUB_OUTPUT"
         echo "susfs_version=${SUSVER:-unknown}" >> "$GITHUB_OUTPUT"
-        
+
     - name: Detect Clang (toolchain for build)
       shell: bash
       run: |
@@ -584,7 +619,7 @@ runs:
         CLANG_FOUND=false
         for base in "$KP/prebuilts" "$KP/prebuilts-master"; do
           [ -d "$base/clang/host/linux-x86" ] || continue
-          latest=$(ls -d "$base"/clang/host/linux-x86/clang-r*/ 2>/dev/null | sort -V | tail -n1 || true)
+          latest=$(ls -d "$base/clang/host/linux-x86/clang-r*/" 2>/dev/null | sort -V | tail -n1 || true)
           if [ -n "$latest" ] && [ -x "$latest/bin/clang" ]; then
             CLANG_BIN="$latest/bin"
             CLANG_FOUND=true
@@ -620,7 +655,17 @@ runs:
         export ARCH=arm64 SUBARCH=arm64
         export CROSS_COMPILE=aarch64-linux-android-
         export CROSS_COMPILE_COMPAT=arm-linux-androideabi-
-        export LD=ld.lld HOSTLD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip HOSTCC=clang HOSTCXX=clang++
+        if command -v llvm-ar >/dev/null 2>&1; then
+          export AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip
+        else
+          for v in 19 18 17 16; do
+            if command -v "llvm-ar-$v" >/dev/null 2>&1; then
+              export AR="llvm-ar-$v" NM="llvm-nm-$v" OBJCOPY="llvm-objcopy-$v" OBJDUMP="llvm-objdump-$v" STRIP="llvm-strip-$v"
+              break
+            fi
+          done
+        fi
+        export LD=ld.lld HOSTLD=ld.lld HOSTCC=clang HOSTCXX=clang++
         export CC=clang
         OUT=out
         mkdir -p "$OUT"
@@ -676,70 +721,68 @@ runs:
         MIN_SIZE=$((6*1024*1024))
         ACTUAL_SIZE=$(stat -c %s "$IMG")
         if [ "$ACTUAL_SIZE" -lt "$MIN_SIZE" ]; then
-          echo "Image size $ACTUAL_SIZE < $MIN_SIZE (suspicious)"; exit 1
+          echo "Image size $ACTUAL_SIZE < $MIN_SIZE (suspicious)"
+          exit 1
         fi
         IMAGE_SHA256=$(cut -d' ' -f1 "$OUT/Image.sha256")
         echo "Image sha256: $IMAGE_SHA256"
         echo "warnings=$WARNINGS" >> "$GITHUB_OUTPUT"
         echo "image_sha256=$IMAGE_SHA256" >> "$GITHUB_OUTPUT"
+
     - name: Prepare Image for AnyKernel3
       shell: bash
       run: |
         set -euo pipefail
         IMG="$GITHUB_WORKSPACE/${CONFIG}/kernel_platform/common/out/arch/arm64/boot/Image"
         if [ -f "$IMG" ]; then
-          cp "$IMG" "$GITHUB_WORKSPACE/AnyKernel3/Image"
+          cp "$IMG" "$GITHUB_WORKSPACE/AnyKernel3/Image" || { echo "Failed to copy kernel image to AnyKernel3"; exit 1; }
         else
-          echo "Warning: Image not found for packaging at $IMG"
+          echo "Error: Image not found for packaging at $IMG"
+          exit 1
         fi
+
     - name: Download Latest SUSFS Module from CI
       shell: bash
       continue-on-error: true
       env:
         GH_TOKEN: ${{ inputs.gh_token }}
       run: |
-        set -euo pipefail
-        if [ -z "${GH_TOKEN:-}" ]; then
-          echo "GH_TOKEN not provided; skipping SUSFS CI module download."
-          exit 0
-        fi
-        cd "$GITHUB_WORKSPACE"
-        LATEST_RUN_ID=$(curl -s -H "Authorization: Bearer ${GH_TOKEN}" \
-          "https://api.github.com/repos/sidex15/susfs4ksu-module/actions/runs?status=success" | \
-          jq -r '.workflow_runs[] | select(.head_branch == "v1.5.2+") | .id' | head -n 1)
-        if [ -z "${LATEST_RUN_ID:-}" ] || [ "${LATEST_RUN_ID}" = "null" ]; then
-          echo "No successful run found for branch v1.5.2+"
-          exit 0
-        fi
-        ARTIFACT_URL=$(curl -s -H "Authorization: Bearer ${GH_TOKEN}" \
-          "https://api.github.com/repos/sidex15/susfs4ksu-module/actions/runs/$LATEST_RUN_ID/artifacts" | \
-          jq -r '.artifacts[0].archive_download_url')
-        if [ -z "${ARTIFACT_URL:-}" ] || [ "${ARTIFACT_URL}" = "null" ]; then
-          echo "Failed to fetch artifact URL"
-          exit 0
-        fi
-        echo "Downloading SUSFS module artifact from run $LATEST_RUN_ID"
-        curl -L -H "Authorization: Bearer ${GH_TOKEN}" -o "ksu_module_susfs_1.5.2+_CI.zip" "$ARTIFACT_URL"
-        if [ -s "ksu_module_susfs_1.5.2+_CI.zip" ]; then
-          cp "ksu_module_susfs_1.5.2+_CI.zip" "$GITHUB_WORKSPACE/AnyKernel3/"
-          echo "SUSFS module copied to AnyKernel3/"
-        else
-          echo "Downloaded artifact is empty; skipping include"
-        fi
+          LATEST_RUN_ID=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/sidex15/susfs4ksu-module/actions/runs?status=success" | \
+            jq -r '.workflow_runs[] | select(.head_branch == "v1.5.2+") | .id' | head -n 1)
+          if [ -z "$LATEST_RUN_ID" ]; then
+            echo "No successful run found for branch v1.5.2+"
+          else
+            ARTIFACT_URL=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/sidex15/susfs4ksu-module/actions/runs/$LATEST_RUN_ID/artifacts" | jq -r '.artifacts[0].archive_download_url')
+            if [ -n "$ARTIFACT_URL" ]; then
+              curl -L -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -o ksu_module_susfs_1.5.2+_CI.zip "$ARTIFACT_URL"
+              cp ksu_module_susfs_1.5.2+_CI.zip ./AnyKernel3/
+            else
+              echo "Failed to fetch artifact URL"
+            fi
+          fi
+
     - name: Create Flashable ZIP
       id: create_zip
       shell: bash
       run: |
         set -euo pipefail
+        IMG="$GITHUB_WORKSPACE/${CONFIG}/kernel_platform/common/out/arch/arm64/boot/Image"
+        if [ ! -s "$IMG" ]; then
+          echo "No built Image found at $IMG; skipping ZIP"
+          exit 1
+        fi
         ART="$GITHUB_WORKSPACE/${CONFIG}/artifacts"
         mkdir -p "$ART"
         cd "$GITHUB_WORKSPACE/AnyKernel3"
         ZIP="AnyKernel3_${{ inputs.model }}_${KANDROID_VERSION}-${KERNEL_VERSION}_SukiSU_${KSUVER}.zip"
         rm -rf .git || true
         echo "Creating $ZIP"
-        zip -r9 "$ZIP" ./*
-        mv "$ZIP" "$ART/"
+        zip -r9 "$ZIP" ./* || { echo "Failed to create ZIP"; exit 1; }
+        mv "$ZIP" "$ART/" || { echo "Failed to move ZIP to artifacts"; exit 1; }
         echo "ZIP created at $ART/$ZIP"
+
     - name: Final Build Summary
       shell: bash
       run: |
@@ -757,7 +800,7 @@ runs:
           echo "Image SHA256: ${{ steps.collect_stats.outputs.image_sha256 }}"
           echo "Compiler: ${CLANG_VERSION:-unknown}"
           echo "Warnings: ${{ steps.collect_stats.outputs.warnings }}"
-        } | tee summary.txt
+        } | tee "$GITHUB_WORKSPACE/${CONFIG}/artifacts/summary.txt"
         {
           echo "### Kernel Build Summary"
           echo ""
@@ -772,6 +815,7 @@ runs:
           echo "- Image SHA256: ${{ steps.collect_stats.outputs.image_sha256 }}"
           echo "- Warnings: ${{ steps.collect_stats.outputs.warnings }}"
         } >> "$GITHUB_STEP_SUMMARY"
+
     - name: Upload Artifacts
       if: success() && steps.create_zip.conclusion == 'success'
       uses: actions/upload-artifact@v4
