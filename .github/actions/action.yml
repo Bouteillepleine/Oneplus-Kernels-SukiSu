@@ -138,6 +138,12 @@ runs:
         sudo apt-get clean
         echo "::endgroup::"
 
+    - name: Configure Git
+      shell: bash
+      run: |
+        git config --global user.name "Bouteille"
+        git config --global user.email "Bouteille@qq.com"
+
     - name: Setup Base Environment
       shell: bash
       run: |
@@ -314,7 +320,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        CUSTOM_LOCALVERSION="-${KANDROID_VERSION}-OnePlus-Ultra-Bolt"
+        CUSTOM_LOCALVERSION="-${KANDROID_VERSION}-OnePlus-UltraBolt"
         echo "CUSTOM_LOCALVERSION=$CUSTOM_LOCALVERSION" >> "$GITHUB_ENV"
 
     - name: Add SukiSU Ultra
@@ -360,12 +366,12 @@ runs:
         sed -i '/KSU_VERSION_API :=/d' kernel/Makefile
         sed -i '/KSU_VERSION_FULL :=/d' kernel/Makefile
         VERSION_DEFINITIONS=$(cat <<EOF
-        define get_ksu_version_full
-        $VERSION_FULL
-        endef
-        KSU_VERSION_API := $KSU_API_VERSION
-        KSU_VERSION_FULL := $VERSION_FULL
-        EOF
+define get_ksu_version_full
+$VERSION_FULL
+endef
+KSU_VERSION_API := $KSU_API_VERSION
+KSU_VERSION_FULL := $VERSION_FULL
+EOF
         )
         awk -v def="$VERSION_DEFINITIONS" '
           /REPO_OWNER :=/ {print; print def; inserted=1; next}
@@ -458,13 +464,13 @@ runs:
 
     - name: Apply LSM Baseband Guard
       if: ${{ inputs.LSM == 'true' }}
-      shell: bash
+      shell hoo: bash
       run: |
         set -euo pipefail
         cd "$GITHUB_WORKSPACE/${CONFIG}/kernel_platform/common"
         echo "Enabling Baseband Guard (LSM)..."
         curl -LSs https://raw.githubusercontent.com/vc-teahouse/Baseband-guard/main/setup.sh | bash
-        sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/bpf/bpf,baseband_guard/ } }' ./security/Kconfig
+        sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/lockdown/lockdown,baseband_guard/ } }' ./security/Kconfig
 
     - name: Convert HMBIRD_OGKI to HMBIRD_GKI (6.6 only)
       shell: bash
@@ -501,6 +507,7 @@ runs:
         fi
         echo "CONFIG_KSU_SUSFS=y" >> "$CONFIG_FILE"
         echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$CONFIG_FILE"
+        echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> "$CONFIG_FILE"
         echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "$CONFIG_FILE"
         echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "$CONFIG_FILE"
         echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "$CONFIG_FILE"
@@ -683,6 +690,37 @@ runs:
           echo "Warning: Image not found for packaging at $IMG"
         fi
 
+    - name: Download Latest SUSFS Module from CI
+      shell: bash
+      continue-on-error: true
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        set -euo pipefail
+        cd "$GITHUB_WORKSPACE"
+        LATEST_RUN_ID=$(curl -s -H "Authorization: Bearer ${GH_TOKEN}" \
+          "https://api.github.com/repos/sidex15/susfs4ksu-module/actions/runs?status=success" | \
+          jq -r '.workflow_runs[] | select(.head_branch == "v1.5.2+") | .id' | head -n 1)
+        if [ -z "${LATEST_RUN_ID:-}" ] || [ "${LATEST_RUN_ID}" = "null" ]; then
+          echo "No successful run found for branch v1.5.2+"
+          exit 0
+        fi
+        ARTIFACT_URL=$(curl -s -H "Authorization: Bearer ${GH_TOKEN}" \
+          "https://api.github.com/repos/sidex15/susfs4ksu-module/actions/runs/$LATEST_RUN_ID/artifacts" | \
+          jq -r '.artifacts[0].archive_download_url')
+        if [ -z "${ARTIFACT_URL:-}" ] || [ "${ARTIFACT_URL}" = "null" ]; then
+          echo "Failed to fetch artifact URL"
+          exit 0
+        fi
+        echo "Downloading SUSFS module artifact from run $LATEST_RUN_ID"
+        curl -L -H "Authorization: Bearer ${GH_TOKEN}" -o "ksu_module_susfs_1.5.2+_CI.zip" "$ARTIFACT_URL"
+        if [ -s "ksu_module_susfs_1.5.2+_CI.zip" ]; then
+          cp "ksu_module_susfs_1.5.2+_CI.zip" "$GITHUB_WORKSPACE/AnyKernel3/"
+          echo "SUSFS module copied to AnyKernel3/"
+        else
+          echo "Downloaded artifact is empty; skipping include"
+        fi
+
     - name: Create Flashable ZIP
       id: create_zip
       shell: bash
@@ -709,7 +747,7 @@ runs:
           echo "Kernel full: ${{ env.KERNEL_FULL_VER }}"
           echo "Kernel Uname: ${{ env.KERNEL_UNAME }}"
           echo "SukiUltra Version: ${KSUVER:-unknown}"
-          echo "SukiUltra branch: ${KSU_BRANCH:-unknown}"         
+          echo "SukiUltra branch: ${KSU_BRANCH:-unknown}"
           echo "SUSFS branch used: ${SUSFS_KERNEL_BRANCH:-gki-${KANDROID_VERSION}-${KERNEL_VERSION}}"
           echo "Optimization: ${{ inputs.optimize_level }}"
           echo "Image SHA256: ${{ steps.collect_stats.outputs.image_sha256 }}"
@@ -724,7 +762,7 @@ runs:
           echo "- Kernel Version: ${{ steps.save_metadata.outputs.kernel_version }}"
           echo "- Kernel Uname: ${{ env.KERNEL_UNAME }}"
           echo "- SukiUltra Version: ${KSUVER:-unknown}"
-          echo "- SukiUltra Branch: [${KSU_BRANCH:-unknown}](https://github.com/SukiSU-Ultra/SukiSU-Ultra/tree/${KSU_BRANCH:-main})"          
+          echo "- SukiUltra Branch: [${KSU_BRANCH:-unknown}](https://github.com/SukiSU-Ultra/SukiSU-Ultra/tree/${KSU_BRANCH:-main})"
           echo "- SUSFS branch used: [${SUSFS_KERNEL_BRANCH:-gki-${KANDROID_VERSION}-${KERNEL_VERSION}}](https://gitlab.com/simonpunk/susfs4ksu/-/tree/${SUSFS_KERNEL_BRANCH:-gki-${KANDROID_VERSION}-${KERNEL_VERSION}})"
           echo "- Optimization: ${{ inputs.optimize_level }}"
           echo "- Image SHA256: ${{ steps.collect_stats.outputs.image_sha256 }}"
