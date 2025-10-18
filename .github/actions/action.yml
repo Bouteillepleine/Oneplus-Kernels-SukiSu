@@ -683,7 +683,7 @@ runs:
         ART="$GITHUB_WORKSPACE/${CONFIG}/artifacts"
         mkdir -p "$ART"
         cd "$GITHUB_WORKSPACE/AnyKernel3"
-        ZIP="AnyKernel3_${{ inputs.model }}_${KANDROID_VERSION}-${KERNEL_VERSION}_SukiSU_${KSUVER}_SUSFS_${SUSVER:-unknown}.zip"
+        ZIP="AnyKernel3_${{ inputs.model }}_${KANDROID_VERSION}-${KERNEL_VERSION}_SukiSU_${KSUVER}.zip"
         rm -rf .git || true
         echo "Creating $ZIP"
         zip -r9 "$ZIP" ./*
