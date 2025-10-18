@@ -51,6 +51,11 @@ inputs:
     required: false
     type: string
     default: O2
+  gh_token:
+    description: GitHub token for downloading SUSFS CI artifact (pass from calling workflow: secrets.GITHUB_TOKEN)
+    required: false
+    type: string
+    default: ''
 
 outputs:
   kernel_version:
@@ -331,7 +336,7 @@ runs:
           SHORT_HASH=${MANUAL_HASH:0:8}
         fi
         KSU_API_VERSION=$(curl -fsSL "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/$BRANCH_NAME/kernel/Makefile" | \
-          grep -m1 "KSU_VERSION_API :=" | awk -F'= ' '{print $2}' | tr -d '[:space:]')
+          awk -F'KSU_VERSION_API :=' 'NF>1{v=$2; gsub(/[[:space:]]/,"",v); print v; exit}')
         if [[ -z "$KSU_API_VERSION" || "$(printf '%s\n' "$KSU_API_VERSION" "3.1.7" | sort -V | head -n1)" != "3.1.7" ]]; then
           KSU_API_VERSION="3.1.7"
         fi
@@ -351,12 +356,12 @@ runs:
         sed -i '/KSU_VERSION_API :=/d' kernel/Makefile
         sed -i '/KSU_VERSION_FULL :=/d' kernel/Makefile
         VERSION_DEFINITIONS=$(cat <<EOF
-        define get_ksu_version_full
-        $VERSION_FULL
-        endef
-          KSU_VERSION_API := $KSU_API_VERSION
-          KSU_VERSION_FULL := $VERSION_FULL
-        EOF
+define get_ksu_version_full
+$VERSION_FULL
+endef
+KSU_VERSION_API := $KSU_API_VERSION
+KSU_VERSION_FULL := $VERSION_FULL
+EOF
         )
         awk -v def="$VERSION_DEFINITIONS" '
           /REPO_OWNER :=/ {print; print def; inserted=1; next}
@@ -504,10 +509,8 @@ runs:
         echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$CONFIG_FILE"
         echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$CONFIG_FILE"
         echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$CONFIG_FILE"
-        
         echo "CONFIG_TMPFS_XATTR=y" >> "$CONFIG_FILE"
         echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$CONFIG_FILE"
-        
         echo "CONFIG_TCP_CONG_ADVANCED=y" >> "$CONFIG_FILE"
         echo "CONFIG_TCP_CONG_BBR=y" >> "$CONFIG_FILE"
         echo "CONFIG_NET_SCH_FQ=y" >> "$CONFIG_FILE"
@@ -519,13 +522,10 @@ runs:
         echo "CONFIG_IP_NF_TARGET_TTL=y" >> "$CONFIG_FILE"
         echo "CONFIG_IP6_NF_TARGET_HL=y" >> "$CONFIG_FILE"
         echo "CONFIG_IP6_NF_MATCH_HL=y" >> "$CONFIG_FILE"
-        
         echo "CONFIG_LTO_CLANG_THIN=y" >> "$CONFIG_FILE"
         echo "CONFIG_LTO_CLANG=y" >> "$CONFIG_FILE"
-        
         echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> "$CONFIG_FILE"
         echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=n" >> "$CONFIG_FILE"
-        
         if [ "${{ inputs.LSM }}" = "true" ]; then
           echo "CONFIG_BBG=y" >> "$CONFIG_FILE"
         fi
@@ -676,9 +676,13 @@ runs:
       shell: bash
       continue-on-error: true
       env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ inputs.gh_token }}
       run: |
         set -euo pipefail
+        if [ -z "${GH_TOKEN:-}" ]; then
+          echo "GH_TOKEN not provided; skipping SUSFS CI module download."
+          exit 0
+        fi
         cd "$GITHUB_WORKSPACE"
         LATEST_RUN_ID=$(curl -s -H "Authorization: Bearer ${GH_TOKEN}" \
           "https://api.github.com/repos/sidex15/susfs4ksu-module/actions/runs?status=success" | \
