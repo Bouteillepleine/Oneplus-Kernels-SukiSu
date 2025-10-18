@@ -220,13 +220,12 @@ jobs:
           echo "=== Start building the release notes ==="
           cat << 'EOF' > release_notes.md
           This release contains SukiSU
-
+      
           ### Built Devices
-
-          | Model | Kernel Version | SukiSU Version | SUSFS Version | Warnings |
-          |-------|----------------|----------------|---------------|----------|
+      
+          | Model | Kernel Version | SukiSU Version |
+          |-------|----------------|----------------|
           EOF
-
           if [ -d "./downloaded-artifacts" ]; then
             for dir in ./downloaded-artifacts/kernel-*; do
               if [ -d "$dir" ]; then
@@ -235,22 +234,20 @@ jobs:
                 metadata_file="$dir/$model.metadata.json"
                 version="Unknown"
                 ksu_version="Unknown"
-                susfs_version="Unknown"
-                warnings="Unknown"
                 if [ -f "$txt_file" ]; then
                   version=$(cat "$txt_file" 2>/dev/null || echo "Unknown")
                 fi
                 if [ -f "$metadata_file" ]; then
                   ksu_version=$(jq -r '.ksu_version // "Unknown"' "$metadata_file")
-                  susfs_version=$(jq -r '.susfs_version // "Unknown"' "$metadata_file")
-                  warnings=$(jq -r '.warnings // "Unknown"' "$metadata_file")
                 fi
-                printf "| %-12s | %-14s | %-14s | %-13s | %-8s |\n" \
-                  "$model" "$version" "$ksu_version" "$susfs_version" "$warnings" >> release_notes.md
+                # Only include models that produced a ZIP
+                if compgen -G "$dir/*.zip" > /dev/null; then
+                  printf "| %-12s | %-14s | %-14s |\n" \
+                    "$model" "$version" "$ksu_version" >> release_notes.md
+                fi
               fi
             done
           fi
-
           echo "--- Final Release Notes ---"
           cat release_notes.md
       - name: Create GitHub Release
