@@ -85,146 +85,90 @@ jobs:
     name: build (${{ inputs.config }}, ${{ inputs.ksun_branch }})
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve selection to parameters
+      - name: Resolve selection to parameters (from JSON map)
         id: select
         shell: bash
         run: |
           set -euo pipefail
           sel="${{ inputs.config }}"
-          model=""
-          manifest=""
-          case "$sel" in
-            oneplus_11_v)                model="OP11";                manifest="oneplus_11_v.xml" ;;
-            oneplus_13)                  model="OP13-CN";             manifest="oneplus_13.xml" ;;
-            oneplus_13_global)           model="OP13-GLO";            manifest="oneplus_13_global.xml" ;;
-            oneplus_ace5_pro)            model="OPAce5Pro";           manifest="oneplus_ace5_pro.xml" ;;
-            oneplus_13s)                 model="OP13S";               manifest="oneplus_13s.xml" ;;
-            oneplus_pad_3)               model="OP-PAD-3";            manifest="oneplus_pad_3.xml" ;;
-            oneplus_13t)                 model="OP13T";               manifest="oneplus_13t.xml" ;;
-            oneplus_pad_2_pro)           model="OP-PAD-2-PRO";        manifest="oneplus_pad_2_pro.xml" ;;
-            oneplus12_v)                 model="OP12";                manifest="oneplus12_v.xml" ;;
-            oneplus_13r)                 model="OP13r";               manifest="oneplus_13r.xml" ;;
-            oneplus_ace5)                model="OP-ACE-5";            manifest="oneplus_ace5.xml" ;;
-            oneplus_ace_3v_v)            model="OP-ACE-3V";           manifest="oneplus_ace_3v_v.xml" ;;
-            oneplus_nord_ce4_v)          model="OP-NORD-CE4";         manifest="oneplus_nord_ce4_v.xml" ;;
-            oneplus_nord_5)              model="OP-Nord-5";           manifest="oneplus_nord_5.xml" ;;
-            oneplus_pad2_v)              model="OP-PAD-2";            manifest="oneplus_pad2_v.xml" ;;
-            oneplus_ace3_pro_v)          model="OP-Ace3-Pro";         manifest="oneplus_ace3_pro_v.xml" ;;
-            oneplus_nord_ce4_lite_5g_v)  model="OP-Nord-CE4-LITE";    manifest="oneplus_nord_ce4_lite_5g_v.xml" ;;
-            oneplus_pad_pro_v)           model="OP-PAD-Pro";          manifest="oneplus_pad_pro_v.xml" ;;
-            oneplus_11r_v)               model="OP11r";               manifest="oneplus_11r_v.xml" ;;
-            oneplus_open_v)              model="OP-OPEN";             manifest="oneplus_open_v.xml" ;;
-            oneplus_ace2_v)              model="OP-ACE-2";            manifest="oneplus_ace2_v.xml" ;;
-            oneplus_10t_v)               model="OP10t";               manifest="oneplus_10t_v.xml" ;;
-            oneplus_10_pro_v)            model="OP10pro";             manifest="oneplus_10_pro_v.xml" ;;
-            oneplus_ace2_pro_v)          model="OP-ACE-2-PRO";        manifest="oneplus_ace2_pro_v.xml" ;;
-            oneplus_12r_v)               model="OP12r";               manifest="oneplus_12r_v.xml" ;;
-            oneplus_ace3_v)              model="OP-Ace3";             manifest="oneplus_ace3_v.xml" ;;
-            oneplus_ace_pro_v)           model="OP-ACE-PRO";          manifest="oneplus_ace_pro_v.xml" ;;
-            oneplus_ace5_ultra)          model="OP-ACE5-ULTRA";       manifest="oneplus_ace5_ultra.xml" ;;
-            oneplus_nord_4_v)            model="OP-NORD-4";           manifest="oneplus_nord_4_v.xml" ;;
-            *) echo "Unknown config: $sel"; exit 1 ;;
-          esac
-          echo "model=$model"       >> "$GITHUB_ENV"
-          echo "manifest=$manifest" >> "$GITHUB_ENV"
+          MAP=".github/device_map.json"
 
-      - name: Extract Manifest Info
-        id: extract_info
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$GITHUB_WORKSPACE"
-          FILE="${{ env.manifest }}"
-          if [[ -z "$FILE" ]]; then
-            echo "env.manifest is empty"; exit 1
-          fi
-          FILE_CONF="${FILE%.xml}"
-          FILE_BASE=$(echo "$FILE_CONF" | sed -E 's/_([a-zA-Z0-9])/\U\1/g; s/^oneplus/OnePlus/; s/^realme/Realme/; s/^oppo/Oppo/')
-          mkdir -p ".repo/manifests_fallback"
-          XML_PATH=".repo/manifests_fallback/${FILE_CONF}.xml"
-          README_PATH=".repo/manifests_fallback/README.md"
-          echo "FILE_CONF=$FILE_CONF"   >> "$GITHUB_ENV"
-          echo "FILE_BASE=$FILE_BASE"   >> "$GITHUB_ENV"
           if ! command -v jq >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y jq
+            sudo apt-get update -y && sudo apt-get install -y jq
           fi
-          declare -A REPOS
-          REPOS["OnePlusOSS"]="https://api.github.com/repos/OnePlusOSS/kernel_manifest"
-          REPOS["Dynamic"]="https://api.github.com/repos/Numbersf/kernel_manifest"
-          FOUND_REPO=""
-          FOUND_BRANCH=""
-          check_repo() {
-            local OWNER=$1 REPO_URL=$2
-            BRANCHES=$(curl -s "$REPO_URL/branches" | jq -r '.[].name' || true)
-            [[ -z "$BRANCHES" ]] && return 1
-            for BR in $BRANCHES; do
-              XML_URL="https://raw.githubusercontent.com/${OWNER}/kernel_manifest/$BR/${FILE_CONF}.xml"
-              README_URL="https://raw.githubusercontent.com/${OWNER}/kernel_manifest/$BR/README.md"
-              if curl -sf --head "$XML_URL" >/dev/null; then
-                curl -s -o "$XML_PATH" "$XML_URL"
-                curl -s -o "$README_PATH" "$README_URL" || true
-                FOUND_REPO="$OWNER"
-                FOUND_BRANCH="$BR"
-                return 0
-              fi
-            done
-            return 1
-          }
-          if check_repo "OnePlusOSS" "${REPOS["OnePlusOSS"]}"; then
-            echo "MANIFEST_REPO=OnePlusOSS" >> "$GITHUB_ENV"
-            echo "MANIFEST_BRANCH=$FOUND_BRANCH" >> "$GITHUB_ENV"
+
+          if [[ ! -f "$MAP" ]]; then
+            echo "ERROR: $MAP not found in repository." >&2
+            exit 1
           fi
-          if [[ -z "$FOUND_REPO" ]]; then
-            DYNAMIC_URL="${REPOS["Dynamic"]}"
-            DYNAMIC_OWNER=$(echo "$DYNAMIC_URL" | sed -E 's#https://api.github.com/repos/([^/]+)/.*#\1#')
-            if check_repo "$DYNAMIC_OWNER" "$DYNAMIC_URL"; then
-              echo "MANIFEST_REPO=$DYNAMIC_OWNER" >> "$GITHUB_ENV"
-              echo "MANIFEST_BRANCH=$FOUND_BRANCH" >> "$GITHUB_ENV"
+
+          if ! jq -e --arg k "$sel" 'has($k)' "$MAP" >/dev/null; then
+            echo "ERROR: Unknown config '$sel'. Add it to $MAP or to workflow inputs." >&2
+            echo "Available keys:" >&2
+            jq -r 'keys[]' "$MAP" >&2
+            exit 1
+          fi
+
+          model=$(jq -r --arg k "$sel" '.[$k].model' "$MAP")
+          soc=$(jq -r --arg k "$sel" '.[$k].soc' "$MAP")
+          branch=$(jq -r --arg k "$sel" '.[$k].branch' "$MAP")
+          manifest=$(jq -r --arg k "$sel" '.[$k].manifest' "$MAP")
+          android_version=$(jq -r --arg k "$sel" '.[$k].android_version' "$MAP")
+          kernel_version=$(jq -r --arg k "$sel" '.[$k].kernel_version' "$MAP")
+
+          for v in model soc branch manifest android_version kernel_version; do
+            val="${!v}"
+            if [[ -z "$val" || "$val" == "null" ]]; then
+              echo "ERROR: Missing field '$v' for config '$sel' in $MAP" >&2
+              exit 1
             fi
-          fi
-          if [[ -z "$FOUND_REPO" || ! -s "$XML_PATH" ]]; then
-            echo "Could not find ${FILE_CONF}.xml in manifest repos"; exit 1
-          fi
-          REVISION=$(grep -oP '<project[^>]+revision="\K[^"]+' "$XML_PATH" | head -n1 || true)
-          CPU=$(echo "$REVISION" | sed -E 's#^(oneplus|realme|oppo)/([^/]+).*#\2#')
-          ANDROID_KERNEL=$(echo "$REVISION" | grep -oE 'android[0-9]+-[0-9]+\.[0-9]+' || true)
-          if [[ -n "$CPU" ]]; then
-            echo "soc=$CPU" >> "$GITHUB_ENV"
-          fi
-          if [[ -n "$ANDROID_KERNEL" ]]; then
-            AV="${ANDROID_KERNEL%-*}"
-            KV="${ANDROID_KERNEL#*-}"
-            echo "android_version=$AV" >> "$GITHUB_ENV"
-            echo "kernel_version=$KV" >> "$GITHUB_ENV"
-            echo "ANDROID_SHORT_VERSION=${AV#android}" >> "$GITHUB_ENV"
-          fi
-          if [[ -s "$README_PATH" ]]; then
-            BUILD_LINE=$(grep -m1 'oplus_build_kernel.sh' "$README_PATH" || true)
-            if [[ -n "$BUILD_LINE" ]]; then
-              CPUD=$(echo "$BUILD_LINE" | awk '{print $(NF-1)}')
-              BUILD_METHOD=$(echo "$BUILD_LINE" | awk '{print $NF}')
-              echo "CPUD=$CPUD" >> "$GITHUB_ENV"
-              echo "BUILD_METHOD=$BUILD_METHOD" >> "$GITHUB_ENV"
-            fi
-          fi
+          done
+
+          echo "model=$model"                     >> "$GITHUB_ENV"
+          echo "soc=$soc"                         >> "$GITHUB_ENV"
+          echo "branch=$branch"                   >> "$GITHUB_ENV"
+          echo "manifest=$manifest"               >> "$GITHUB_ENV"
+          echo "android_version=$android_version" >> "$GITHUB_ENV"
+          echo "kernel_version=$kernel_version"   >> "$GITHUB_ENV"
+
+          FILE_CONF="${manifest%.xml}"
+          FILE_BASE=$(echo "$FILE_CONF" | sed -E 's/_([a-zA-Z0-9])/\U\1/g; s/^oneplus/OnePlus/; s/^realme/Realme/; s/^oppo/Oppo/')
+          echo "FILE_CONF=$FILE_CONF"             >> "$GITHUB_ENV"
+          echo "FILE_BASE=$FILE_BASE"             >> "$GITHUB_ENV"
 
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
+      - name: Resolve SUSFS branch from mapping
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="${{ env.android_version }}-${{ env.kernel_version }}"
+          json='${{ inputs.susfs_mapping_json }}'
+          if ! echo "$json" | jq -e . >/dev/null 2>&1; then
+            json='{"android12-5.10":"","android13-5.10":"","android13-5.15":"","android14-5.15":"","android14-6.1":"","android15-6.6":""}'
+          fi
+          val=$(echo "$json" | jq -r --arg k "$key" '.[$k] // ""')
+          if [[ -n "$val" && "$val" != "null" ]]; then
+            echo "susfs_branch=$val" >> "$GITHUB_ENV"
+          else
+            echo "susfs_branch=gki-${key}" >> "$GITHUB_ENV"
+          fi
+
       - name: Build Kernel
-        uses: ./.github/actions/
+        uses: ./.github/actions/build
         env:
           SUSFS_JSON: ${{ inputs.susfs_mapping_json }}
         with:
           model: ${{ env.model }}
           soc: ${{ env.soc }}
-          branch: ${{ env.MANIFEST_BRANCH }}
+          branch: ${{ env.branch }}
           manifest: ${{ env.manifest }}
           android_version: ${{ env.android_version }}
           kernel_version: ${{ env.kernel_version }}
+          susfs_branch: ${{ env.susfs_branch }}
           ksun_branch: ${{ inputs.ksun_branch }}
           optimize_level: ${{ inputs.optimize_level }}
           KSU_META: ${{ inputs.KSU_META }}
