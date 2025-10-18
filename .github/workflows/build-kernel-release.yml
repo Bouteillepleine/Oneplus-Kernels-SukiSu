@@ -155,7 +155,8 @@ jobs:
           fi
 
       - name: Build Kernel
-        uses: ./.github/actions/action
+        id: build_kernel
+        uses: ./.github/actions/build
         env:
           SUSFS_JSON: ${{ inputs.susfs_mapping_json }}
         with:
@@ -222,8 +223,8 @@ jobs:
           
           ### Built Devices
           
-          | Model | Kernel Version |
-          |-------|----------------|
+          | Model | Kernel Version | SukiSU Version | SUSFS Version | Warnings |
+          |-------|----------------|----------------|---------------|----------|
           EOF
           
           if [ -d "./downloaded-artifacts" ]; then
@@ -231,7 +232,11 @@ jobs:
               if [ -f "$file" ]; then
                 model=$(basename "$file" .txt)
                 version=$(cat "$file" 2>/dev/null || echo "Unknown")
-                printf "| %-12s | %-16s |\n" "$model" "$version" >> release_notes.md
+                ksu_version="${{ steps.build_kernel.outputs.ksu_version }}"
+                susfs_version="${{ steps.build_kernel.outputs.susfs_version }}"
+                warnings="${{ steps.build_kernel.outputs.warnings }}"
+                printf "| %-12s | %-14s | %-14s | %-13s | %-8s |\n" \
+                  "$model" "$version" "$ksu_version" "$susfs_version" "$warnings" >> release_notes.md
               fi
             done
           fi
