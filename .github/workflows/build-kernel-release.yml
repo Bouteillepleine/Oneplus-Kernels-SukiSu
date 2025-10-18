@@ -91,104 +91,123 @@ jobs:
         run: |
           set -euo pipefail
           sel="${{ inputs.config }}"
-          model=""; soc=""; branch=""; manifest=""; android_version=""; kernel_version=""
-
+          model=""
+          manifest=""
           case "$sel" in
-            oneplus_11_v)
-              model="OP11"; soc="kalama"; branch="oneplus/sm8550"; manifest="oneplus_11_v.xml"; android_version="android13"; kernel_version="5.15"
-              ;;
-            oneplus_13)
-              model="OP13-CN"; soc="sun"; branch="oneplus/sm8750"; manifest="oneplus_13.xml"; android_version="android15"; kernel_version="6.6"
-              ;;
-            oneplus_13_global)
-              model="OP13-GLO"; soc="sun"; branch="oneplus/sm8750"; manifest="oneplus_13_global.xml"; android_version="android15"; kernel_version="6.6"
-              ;;
-            oneplus_ace5_pro)
-              model="OPAce5Pro"; soc="sun"; branch="oneplus/sm8750"; manifest="oneplus_ace5_pro.xml"; android_version="android15"; kernel_version="6.6"
-              ;;
-            oneplus_13s)
-              model="OP13S"; soc="sun"; branch="oneplus/sm8750"; manifest="oneplus_13s.xml"; android_version="android15"; kernel_version="6.6"
-              ;;
-            oneplus_pad_3)
-              model="OP-PAD-3"; soc="sun"; branch="oneplus/sm8750"; manifest="oneplus_pad_3.xml"; android_version="android15"; kernel_version="6.6"
-              ;;
-            oneplus_13t)
-              model="OP13T"; soc="sun"; branch="oneplus/sm8750"; manifest="oneplus_13t.xml"; android_version="android15"; kernel_version="6.6"
-              ;;
-            oneplus_pad_2_pro)
-              model="OP-PAD-2-PRO"; soc="sun"; branch="oneplus/sm8750"; manifest="oneplus_pad_2_pro.xml"; android_version="android15"; kernel_version="6.6"
-              ;;
-            oneplus12_v)
-              model="OP12"; soc="pineapple"; branch="oneplus/sm8650"; manifest="oneplus12_v.xml"; android_version="android14"; kernel_version="6.1"
-              ;;
-            oneplus_13r)
-              model="OP13r"; soc="pineapple"; branch="oneplus/sm8650"; manifest="oneplus_13r.xml"; android_version="android14"; kernel_version="6.1"
-              ;;
-            oneplus_ace5)
-              model="OP-ACE-5"; soc="pineapple"; branch="oneplus/sm8650"; manifest="oneplus_ace5.xml"; android_version="android14"; kernel_version="6.1"
-              ;;
-            oneplus_ace_3v_v)
-              model="OP-ACE-3V"; soc="pineapple"; branch="oneplus/sm7675"; manifest="oneplus_ace_3v_v.xml"; android_version="android14"; kernel_version="6.1"
-              ;;
-            oneplus_nord_ce4_v)
-              model="OP-NORD-4"; soc="pineapple"; branch="oneplus/sm7675"; manifest="oneplus_nord_ce4_v.xml"; android_version="android14"; kernel_version="6.1"
-              ;;
-            oneplus_nord_5)
-              model="OP-Nord-5"; soc="cliffs"; branch="oneplus/sm8635"; manifest="oneplus_nord_5.xml"; android_version="android14"; kernel_version="6.1"
-              ;;
-            oneplus_pad2_v)
-              model="OP-PAD-2"; soc="pineapple"; branch="oneplus/sm8650"; manifest="oneplus_pad2_v.xml"; android_version="android14"; kernel_version="6.1"
-              ;;
-            oneplus_ace3_pro_v)
-              model="OP-Ace3-Pro"; soc="pineapple"; branch="oneplus/sm8650"; manifest="oneplus_ace3_pro_v.xml"; android_version="android14"; kernel_version="6.1"
-              ;;
-            oneplus_nord_ce4_lite_5g_v)
-              model="OP-Nord-CE4-LITE"; soc="blair"; branch="oneplus/sm6375"; manifest="oneplus_nord_ce4_lite_5g_v.xml"; android_version="android14"; kernel_version="6.1"
-              ;;
-            oneplus_pad_pro_v)
-              model="OP-PAD-Pro"; soc="pineapple"; branch="oneplus/sm8650"; manifest="oneplus_pad_pro_v.xml"; android_version="android14"; kernel_version="6.1"
-              ;;
-            oneplus_11r_v)
-              model="OP11r"; soc="waipio"; branch="oneplus/sm8475"; manifest="oneplus_11r_v.xml"; android_version="android12"; kernel_version="5.10"
-              ;;
-            oneplus_open_v)
-              model="OP-OPEN"; soc="kalama"; branch="oneplus/sm8550"; manifest="oneplus_open_v.xml"; android_version="android13"; kernel_version="5.15"
-              ;;
-            oneplus_ace2_v)
-              model="OP-ACE-2"; soc="waipio"; branch="oneplus/sm8475"; manifest="oneplus_ace2_v.xml"; android_version="android12"; kernel_version="5.10"
-              ;;
-            oneplus_10t_v)
-              model="OP10t"; soc="waipio"; branch="oneplus/sm8475"; manifest="oneplus_10t_v.xml"; android_version="android12"; kernel_version="5.10"
-              ;;
-            oneplus_10_pro_v)
-              model="OP10pro"; soc="waipio"; branch="oneplus/sm8450"; manifest="oneplus_10_pro_v.xml"; android_version="android12"; kernel_version="5.10"
-              ;;
-            oneplus_ace2_pro_v)
-              model="OP-ACE-2-PRO"; soc="kalama"; branch="oneplus/sm8550"; manifest="oneplus_ace2_pro_v.xml"; android_version="android13"; kernel_version="5.15"
-              ;;
-            oneplus_12r_v)
-              model="OP12r"; soc="kalama"; branch="oneplus/sm8550"; manifest="oneplus_12r_v.xml"; android_version="android13"; kernel_version="5.15"
-              ;;
-            oneplus_ace3_v)
-              model="OP13T"; soc="sun"; branch="oneplus/sm8750"; manifest="oneplus_13t.xml"; android_version="android15"; kernel_version="6.6"
-              ;;
-            oneplus_ace_pro_v)
-              model="OP-ACE-2-PRO"; soc="kalama"; branch="oneplus/sm8550"; manifest="oneplus_ace2_pro_v.xml"; android_version="android13"; kernel_version="5.15"
-              ;;
-            oneplus_ace5_ultra)
-              model="OP13S"; soc="sun"; branch="oneplus/sm8750"; manifest="oneplus_13s.xml"; android_version="android15"; kernel_version="6.6"
-              ;;
-            *)
-              echo "Unknown config: $sel"; exit 1
-              ;;
+            oneplus_11_v)                model="OP11";                manifest="oneplus_11_v.xml" ;;
+            oneplus_13)                  model="OP13-CN";             manifest="oneplus_13.xml" ;;
+            oneplus_13_global)           model="OP13-GLO";            manifest="oneplus_13_global.xml" ;;
+            oneplus_ace5_pro)            model="OPAce5Pro";           manifest="oneplus_ace5_pro.xml" ;;
+            oneplus_13s)                 model="OP13S";               manifest="oneplus_13s.xml" ;;
+            oneplus_pad_3)               model="OP-PAD-3";            manifest="oneplus_pad_3.xml" ;;
+            oneplus_13t)                 model="OP13T";               manifest="oneplus_13t.xml" ;;
+            oneplus_pad_2_pro)           model="OP-PAD-2-PRO";        manifest="oneplus_pad_2_pro.xml" ;;
+            oneplus12_v)                 model="OP12";                manifest="oneplus12_v.xml" ;;
+            oneplus_13r)                 model="OP13r";               manifest="oneplus_13r.xml" ;;
+            oneplus_ace5)                model="OP-ACE-5";            manifest="oneplus_ace5.xml" ;;
+            oneplus_ace_3v_v)            model="OP-ACE-3V";           manifest="oneplus_ace_3v_v.xml" ;;
+            oneplus_nord_ce4_v)          model="OP-NORD-CE4";         manifest="oneplus_nord_ce4_v.xml" ;;
+            oneplus_nord_5)              model="OP-Nord-5";           manifest="oneplus_nord_5.xml" ;;
+            oneplus_pad2_v)              model="OP-PAD-2";            manifest="oneplus_pad2_v.xml" ;;
+            oneplus_ace3_pro_v)          model="OP-Ace3-Pro";         manifest="oneplus_ace3_pro_v.xml" ;;
+            oneplus_nord_ce4_lite_5g_v)  model="OP-Nord-CE4-LITE";    manifest="oneplus_nord_ce4_lite_5g_v.xml" ;;
+            oneplus_pad_pro_v)           model="OP-PAD-Pro";          manifest="oneplus_pad_pro_v.xml" ;;
+            oneplus_11r_v)               model="OP11r";               manifest="oneplus_11r_v.xml" ;;
+            oneplus_open_v)              model="OP-OPEN";             manifest="oneplus_open_v.xml" ;;
+            oneplus_ace2_v)              model="OP-ACE-2";            manifest="oneplus_ace2_v.xml" ;;
+            oneplus_10t_v)               model="OP10t";               manifest="oneplus_10t_v.xml" ;;
+            oneplus_10_pro_v)            model="OP10pro";             manifest="oneplus_10_pro_v.xml" ;;
+            oneplus_ace2_pro_v)          model="OP-ACE-2-PRO";        manifest="oneplus_ace2_pro_v.xml" ;;
+            oneplus_12r_v)               model="OP12r";               manifest="oneplus_12r_v.xml" ;;
+            oneplus_ace3_v)              model="OP-Ace3";             manifest="oneplus_ace3_v.xml" ;;
+            oneplus_ace_pro_v)           model="OP-ACE-PRO";          manifest="oneplus_ace_pro_v.xml" ;;
+            oneplus_ace5_ultra)          model="OP-ACE5-ULTRA";       manifest="oneplus_ace5_ultra.xml" ;;
+            oneplus_nord_4_v)            model="OP-NORD-4";           manifest="oneplus_nord_4_v.xml" ;;
+            *) echo "Unknown config: $sel"; exit 1 ;;
           esac
+          echo "model=$model"       >> "$GITHUB_ENV"
+          echo "manifest=$manifest" >> "$GITHUB_ENV"
 
-          echo "model=$model"           >> "$GITHUB_ENV"
-          echo "soc=$soc"               >> "$GITHUB_ENV"
-          echo "branch=$branch"         >> "$GITHUB_ENV"
-          echo "manifest=$manifest"     >> "$GITHUB_ENV"
-          echo "android_version=$android_version" >> "$GITHUB_ENV"
-          echo "kernel_version=$kernel_version"   >> "$GITHUB_ENV"
+      - name: Extract Manifest Info
+        id: extract_info
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          FILE="${{ env.manifest }}"
+          if [[ -z "$FILE" ]]; then
+            echo "env.manifest is empty"; exit 1
+          fi
+          FILE_CONF="${FILE%.xml}"
+          FILE_BASE=$(echo "$FILE_CONF" | sed -E 's/_([a-zA-Z0-9])/\U\1/g; s/^oneplus/OnePlus/; s/^realme/Realme/; s/^oppo/Oppo/')
+          mkdir -p ".repo/manifests_fallback"
+          XML_PATH=".repo/manifests_fallback/${FILE_CONF}.xml"
+          README_PATH=".repo/manifests_fallback/README.md"
+          echo "FILE_CONF=$FILE_CONF"   >> "$GITHUB_ENV"
+          echo "FILE_BASE=$FILE_BASE"   >> "$GITHUB_ENV"
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y jq
+          fi
+          declare -A REPOS
+          REPOS["OnePlusOSS"]="https://api.github.com/repos/OnePlusOSS/kernel_manifest"
+          REPOS["Dynamic"]="https://api.github.com/repos/Numbersf/kernel_manifest"
+          FOUND_REPO=""
+          FOUND_BRANCH=""
+          check_repo() {
+            local OWNER=$1 REPO_URL=$2
+            BRANCHES=$(curl -s "$REPO_URL/branches" | jq -r '.[].name' || true)
+            [[ -z "$BRANCHES" ]] && return 1
+            for BR in $BRANCHES; do
+              XML_URL="https://raw.githubusercontent.com/${OWNER}/kernel_manifest/$BR/${FILE_CONF}.xml"
+              README_URL="https://raw.githubusercontent.com/${OWNER}/kernel_manifest/$BR/README.md"
+              if curl -sf --head "$XML_URL" >/dev/null; then
+                curl -s -o "$XML_PATH" "$XML_URL"
+                curl -s -o "$README_PATH" "$README_URL" || true
+                FOUND_REPO="$OWNER"
+                FOUND_BRANCH="$BR"
+                return 0
+              fi
+            done
+            return 1
+          }
+          if check_repo "OnePlusOSS" "${REPOS["OnePlusOSS"]}"; then
+            echo "MANIFEST_REPO=OnePlusOSS" >> "$GITHUB_ENV"
+            echo "MANIFEST_BRANCH=$FOUND_BRANCH" >> "$GITHUB_ENV"
+          fi
+          if [[ -z "$FOUND_REPO" ]]; then
+            DYNAMIC_URL="${REPOS["Dynamic"]}"
+            DYNAMIC_OWNER=$(echo "$DYNAMIC_URL" | sed -E 's#https://api.github.com/repos/([^/]+)/.*#\1#')
+            if check_repo "$DYNAMIC_OWNER" "$DYNAMIC_URL"; then
+              echo "MANIFEST_REPO=$DYNAMIC_OWNER" >> "$GITHUB_ENV"
+              echo "MANIFEST_BRANCH=$FOUND_BRANCH" >> "$GITHUB_ENV"
+            fi
+          fi
+          if [[ -z "$FOUND_REPO" || ! -s "$XML_PATH" ]]; then
+            echo "Could not find ${FILE_CONF}.xml in manifest repos"; exit 1
+          fi
+          REVISION=$(grep -oP '<project[^>]+revision="\K[^"]+' "$XML_PATH" | head -n1 || true)
+          CPU=$(echo "$REVISION" | sed -E 's#^(oneplus|realme|oppo)/([^/]+).*#\2#')
+          ANDROID_KERNEL=$(echo "$REVISION" | grep -oE 'android[0-9]+-[0-9]+\.[0-9]+' || true)
+          if [[ -n "$CPU" ]]; then
+            echo "soc=$CPU" >> "$GITHUB_ENV"
+          fi
+          if [[ -n "$ANDROID_KERNEL" ]]; then
+            AV="${ANDROID_KERNEL%-*}"
+            KV="${ANDROID_KERNEL#*-}"
+            echo "android_version=$AV" >> "$GITHUB_ENV"
+            echo "kernel_version=$KV" >> "$GITHUB_ENV"
+            echo "ANDROID_SHORT_VERSION=${AV#android}" >> "$GITHUB_ENV"
+          fi
+          if [[ -s "$README_PATH" ]]; then
+            BUILD_LINE=$(grep -m1 'oplus_build_kernel.sh' "$README_PATH" || true)
+            if [[ -n "$BUILD_LINE" ]]; then
+              CPUD=$(echo "$BUILD_LINE" | awk '{print $(NF-1)}')
+              BUILD_METHOD=$(echo "$BUILD_LINE" | awk '{print $NF}')
+              echo "CPUD=$CPUD" >> "$GITHUB_ENV"
+              echo "BUILD_METHOD=$BUILD_METHOD" >> "$GITHUB_ENV"
+            fi
+          fi
 
       - name: Resolve SUSFS branch from JSON input
         id: susfs
@@ -197,12 +216,10 @@ jobs:
           set -euo pipefail
           key="${{ env.android_version }}-${{ env.kernel_version }}"
           json='${{ inputs.susfs_mapping_json }}'
-          
           if ! command -v jq >/dev/null 2>&1; then
             sudo apt-get update
             sudo apt-get install -y jq
           fi
-          
           declare -A map=(
             ["android12-5.10"]=""
             ["android13-5.10"]=""
@@ -211,34 +228,27 @@ jobs:
             ["android14-6.1"]=""
             ["android15-6.6"]=""
           )
-          
           if [[ -n "$json" && "$json" != "" ]]; then
-            echo "Parsing SUSFS mapping JSON: $json"
             if jq empty <<<"$json" >/dev/null 2>&1; then
               for k in "${!map[@]}"; do
                 v=$(jq -r --arg k "$k" '.[$k] // empty' <<<"$json" 2>/dev/null || echo "")
                 if [[ -n "$v" && "$v" != "null" ]]; then
                   map["$k"]="$v"
-                  echo "Mapped $k -> $v"
                 fi
               done
             else
-              echo "WARNING: Invalid JSON provided, using defaults"
+              echo "WARNING: Invalid SUSFS JSON provided, using defaults"
             fi
           fi
-          
           if [[ -z "${map[$key]+_exists}" ]]; then
             echo "ERROR: Unsupported Android/Kernel combo: $key" >&2
             echo "Supported combos: ${!map[*]}" >&2
             exit 1
           fi
-          
           susfs_branch="${map[$key]}"
           if [[ -z "$susfs_branch" ]]; then
             susfs_branch="gki-${key}"
           fi
-          
-          echo "Selected SusFS branch for $key: $susfs_branch"
           echo "susfs_branch=$susfs_branch" >> "$GITHUB_OUTPUT"
 
       - name: Checkout Code
@@ -251,7 +261,7 @@ jobs:
         with:
           model: ${{ env.model }}
           soc: ${{ env.soc }}
-          branch: ${{ env.branch }}
+          branch: ${{ env.MANIFEST_BRANCH }}
           manifest: ${{ env.manifest }}
           android_version: ${{ env.android_version }}
           kernel_version: ${{ env.kernel_version }}
@@ -309,7 +319,7 @@ jobs:
           echo "=== Start building the release notes ==="
           cat << 'EOF' > release_notes.md
           This release contains SukiSu
-                   
+          
           ### Built Devices
           
           | Model | Kernel Version |
@@ -325,7 +335,6 @@ jobs:
               fi
             done
           fi
-          
           
           echo "--- Final Release Notes ---"
           cat release_notes.md
