@@ -209,48 +209,6 @@ jobs:
             fi
           fi
 
-      - name: Resolve SUSFS branch from JSON input
-        id: susfs
-        shell: bash
-        run: |
-          set -euo pipefail
-          key="${{ env.android_version }}-${{ env.kernel_version }}"
-          json='${{ inputs.susfs_mapping_json }}'
-          if ! command -v jq >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y jq
-          fi
-          declare -A map=(
-            ["android12-5.10"]=""
-            ["android13-5.10"]=""
-            ["android13-5.15"]=""
-            ["android14-5.15"]=""
-            ["android14-6.1"]=""
-            ["android15-6.6"]=""
-          )
-          if [[ -n "$json" && "$json" != "" ]]; then
-            if jq empty <<<"$json" >/dev/null 2>&1; then
-              for k in "${!map[@]}"; do
-                v=$(jq -r --arg k "$k" '.[$k] // empty' <<<"$json" 2>/dev/null || echo "")
-                if [[ -n "$v" && "$v" != "null" ]]; then
-                  map["$k"]="$v"
-                fi
-              done
-            else
-              echo "WARNING: Invalid SUSFS JSON provided, using defaults"
-            fi
-          fi
-          if [[ -z "${map[$key]+_exists}" ]]; then
-            echo "ERROR: Unsupported Android/Kernel combo: $key" >&2
-            echo "Supported combos: ${!map[*]}" >&2
-            exit 1
-          fi
-          susfs_branch="${map[$key]}"
-          if [[ -z "$susfs_branch" ]]; then
-            susfs_branch="gki-${key}"
-          fi
-          echo "susfs_branch=$susfs_branch" >> "$GITHUB_OUTPUT"
-
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
@@ -258,6 +216,8 @@ jobs:
 
       - name: Build Kernel
         uses: ./.github/actions/build
+        env:
+          SUSFS_JSON: ${{ inputs.susfs_mapping_json }}
         with:
           model: ${{ env.model }}
           soc: ${{ env.soc }}
@@ -266,7 +226,6 @@ jobs:
           android_version: ${{ env.android_version }}
           kernel_version: ${{ env.kernel_version }}
           ksun_branch: ${{ inputs.ksun_branch }}
-          susfs_branch: ${{ steps.susfs.outputs.susfs_branch }}
           optimize_level: ${{ inputs.optimize_level }}
           KSU_META: ${{ inputs.KSU_META }}
           HOOK: ${{ inputs.HOOK }}
