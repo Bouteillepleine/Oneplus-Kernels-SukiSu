@@ -1,4 +1,4 @@
-name: Build OnePlus Kernels All models
+name: Build OnePlus Kernels_All models
 
 permissions:
   contents: write
